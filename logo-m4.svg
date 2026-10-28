@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- m4ster FrameLab — pixel-art M4 monogram -->
+  <!-- background plate -->
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="#1a1428"/>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="none" stroke="#a78bfa" stroke-width="3"/>
+  <!-- pixel M (left) — 5px blocks -->
+  <g fill="#a78bfa">
+    <rect x="12" y="18" width="5" height="28"/>
+    <rect x="17" y="18" width="5" height="7"/>
+    <rect x="22" y="25" width="5" height="7"/>
+    <rect x="27" y="18" width="5" height="7"/>
+    <rect x="32" y="18" width="5" height="28"/>
+  </g>
+  <!-- pixel 4 (right) — 5px blocks -->
+  <g fill="#ffffff">
+    <rect x="42" y="18" width="5" height="14"/>
+    <rect x="47" y="18" width="5" height="28"/>
+    <rect x="37" y="27" width="15" height="5"/>
+  </g>
+</svg>

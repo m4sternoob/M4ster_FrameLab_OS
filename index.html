@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="forest">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>m4ster FrameLab — free 2D game sprite generator</title>
+<meta name="description" content="m4ster FrameLab: prompt-first 2D game sprite + animation atlas studio in your browser. Free forever, open source, unlimited use. No account, no signup, no payments. For the gamers, by the gamers.">
+<link rel="icon" href="icons/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-light-32.png" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#a78bfa">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var _t=localStorage.getItem("msg_theme_v1");if(_t)document.documentElement.setAttribute("data-theme",_t);}catch(e){}document.documentElement.classList.add("js");try{if(localStorage.getItem("m4ster.animations")!=="1")document.documentElement.classList.add("anim-off");}catch(e){document.documentElement.classList.add("anim-off");}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+
+<div class="aura" id="aura" aria-hidden="true">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<header class="topbar">
+  <button class="brand" type="button" id="brandHome" aria-label="Go to home">
+    <span class="monogram-wrap" aria-hidden="true">
+    <svg class="monogram" viewBox="0 0 64 64" aria-hidden="true">
+      <rect x="2" y="2" width="60" height="60" rx="12" fill="#1a1428"/>
+      <rect x="2" y="2" width="60" height="60" rx="12" fill="none" stroke="currentColor" stroke-width="3"/>
+      <g class="glow-m" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10,46 C9,38 11,28 10,20 C14,26 19,32 23,37 C27,32 32,26 36,20 C35,28 37,38 36,46"/>
+      </g>
+      <g class="glow-f" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M44,20 C43,26 45,32 44,38"/>
+        <path d="M38,21 C42,20 48,20 52,21"/>
+        <path d="M40,29 C43,28 47,28 50,29"/>
+      </g>
+      <g class="glow-l" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M49,40 C48,44 50,48 49,52"/>
+        <path d="M49,51 C52,51 55,51 57,50"/>
+      </g>
+    </svg>
+    </span>
+    <div class="brand-text">
+      <div class="brand-name">M4STER <span class="brand-sub">FRAMELAB</span></div>
+      <div class="tagline">For the gamers, by the gamers</div>
+    </div>
+  </button>
+  <div class="dim-flip" role="tablist" aria-label="Lab dimension">
+    <button class="flip-btn active" id="flip2d" type="button">2D · Sprites</button>
+    <button class="flip-btn" id="flip3d" type="button">3D · Mesh</button>
+  </div>
+  
+  <div class="topbar-right">
+    <button class="icon-btn" id="customizeBtn" aria-label="Customize theme, animations and aura" aria-haspopup="dialog" aria-expanded="false" title="Customize">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.4" fill="var(--panel)"/>
+        <line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2.4" fill="var(--panel)"/>
+        <line x1="4" y1="17" x2="20" y2="17"/><circle cx="7" cy="17" r="2.4" fill="var(--panel)"/>
+      </svg>
+    </button>
+    <span class="pill">free · unlimited · no key needed · no signup</span>
+    <a class="gh-link" href="https://github.com/m4sternoob/M4ster_FrameLab_OS" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</header>
+
+<!-- ============ v6 HERO: prompt-first (Seele pattern, zero login) ============ -->
+<section class="hero page-section" id="hero" data-mml="hero">
+  <div class="hero-inner">
+    <div class="hero-eyebrow">FREE · UNLIMITED · NO SIGNUP · ACTUALLY</div>
+    <h1 class="hero-title">What will you <em>make</em> today?</h1>
+    <p class="hero-sub">Describe a sprite — characters, tiles, effects, UI. Or drop in a whole sprite sheet and split it into frames.</p>
+    <div class="hero-prompt-row">
+      <textarea id="heroPrompt" rows="2" placeholder="e.g. zombie pirate with a rusty hook hand…"></textarea>
+      <button id="heroGenerate" class="generate hero-go" type="button">MAKE IT</button>
+    </div>
+    <div class="hero-hints">
+      <span>no login</span><span>no paywall</span><span>no watermark</span><span>procedural + tools work offline</span>
+    </div>
+  </div>
+  <div class="marquee" aria-hidden="true"><div class="marquee-track">
+    <span>characters</span><i>·</i><span>tiles</span><i>·</i><span>effects</span><i>·</i><span>ui</span><i>·</i><span>sprite sheets</span><i>·</i><span>pixel art</span><i>·</i><span>no login</span><i>·</i><span>no paywall</span><i>·</i><span>free forever</span><i>·</i><span>open source</span><i>·</i>
+    <span>characters</span><i>·</i><span>tiles</span><i>·</i><span>effects</span><i>·</i><span>ui</span><i>·</i><span>sprite sheets</span><i>·</i><span>pixel art</span><i>·</i><span>no login</span><i>·</i><span>no paywall</span><i>·</i><span>free forever</span><i>·</i><span>open source</span><i>·</i>
+  </div></div>
+</section>
+
+<!-- ============ TOOLS: standalone utilities (not generation) ============ -->
+<section class="page-section" id="toolsStrip" data-mml="tools" aria-label="Standalone tools">
+  <h2 class="section-title">Tools <span class="dim">&mdash; standalone utilities, not generation</span></h2>
+  <div class="tools-grid">
+    <button class="tool-card" data-cat="pixelart" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="6" width="11" height="11" fill="currentColor"/><rect x="18.5" y="6" width="11" height="11" fill="currentColor" opacity=".55"/><rect x="31" y="6" width="11" height="11" fill="currentColor"/><rect x="6" y="18.5" width="11" height="11" fill="currentColor" opacity=".55"/><rect x="18.5" y="18.5" width="11" height="11" fill="currentColor"/><rect x="31" y="18.5" width="11" height="11" fill="currentColor" opacity=".55"/><rect x="6" y="31" width="11" height="11" fill="currentColor"/><rect x="18.5" y="31" width="11" height="11" fill="currentColor" opacity=".55"/><rect x="31" y="31" width="11" height="11" fill="currentColor"/></svg>
+      <span class="tool-text"><b>Pixel Converter</b><span>any photo &rarr; crisp pixel art &middot; 100% offline</span></span>
+    </button>
+    <button class="tool-card" data-cat="slicer" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="8" width="36" height="32" rx="4" fill="none" stroke="currentColor" stroke-width="3"/><line x1="6" y1="24" x2="42" y2="24" stroke="currentColor" stroke-width="3" stroke-dasharray="5 4"/><path d="M30 34l6 6M36 34l-6 6" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+      <span class="tool-text"><b>Sprite Slicer</b><span>slice a sprite sheet into frames &middot; 100% offline</span></span>
+    </button>
+  </div>
+</section>
+
+<!-- ============ v6 GALLERY: moving preview cards (Ludo pattern) ============ -->
+<section class="page-section" id="gallery" data-mml="gallery" aria-label="Fresh from the lab">
+  <h2 class="section-title">Fresh from the lab <span class="dim">— live renders, click any card to open it</span><span class="gal-nav"><button type="button" id="galPrev" class="gal-arrow" aria-label="Previous cards">&#8249;</button><button type="button" id="galNext" class="gal-arrow" aria-label="Next cards">&#8250;</button></span></h2>
+  <div class="gallery-grid" id="galleryGrid"></div>
+</section>
+
+<!-- ============ v6 MOTION PRESETS (Ludo pattern) ============ -->
+<section class="page-section" id="presets" data-mml="presets" aria-label="Motion presets">
+  <h2 class="section-title">Motion presets <span class="dim">— pick a motion, it drives procedural + split animations</span></h2>
+  <div class="preset-row" id="presetRow"></div>
+</section>
+
+<div data-mml-zone="lab" id="mmlZone"></div>
+
+<!-- ============ THE LAB (tool — stepper kept for the build view) ============ -->
+<main class="layout page-section" id="tool">
+
+  <!-- ============ LEFT: CONTROLS ============ -->
+  <aside class="panel controls" data-mml="wizard">
+    <button id="toolBack" class="tool-back" type="button" hidden>&larr; Back to generator</button>
+    <div class="wiz-top" id="wizTop" hidden>
+      <div class="wiz-dots" id="wizDots" aria-label="Steps"></div>
+      <span class="wiz-count" id="wizCount"></span>
+    </div>
+    <section class="ctl-group" id="ctlStep1">
+      <div class="ctl-head"><span class="ctl-num">1</span><div class="ctl-titles"><span class="ctl-step">Step 1</span><h3>What are you making?</h3></div></div>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-cat="character" role="tab"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="14" r="7" fill="currentColor"/><rect x="17" y="23" width="14" height="16" rx="4" fill="currentColor"/><rect x="12" y="24" width="5" height="12" rx="2" fill="currentColor" opacity=".6"/><rect x="31" y="24" width="5" height="12" rx="2" fill="currentColor" opacity=".6"/></svg><span>Character</span></button>
+        <button class="tab" data-cat="tile" role="tab"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="6" width="16" height="16" rx="3" fill="currentColor"/><rect x="26" y="6" width="16" height="16" rx="3" fill="currentColor" opacity=".6"/><rect x="6" y="26" width="16" height="16" rx="3" fill="currentColor" opacity=".6"/><rect x="26" y="26" width="16" height="16" rx="3" fill="currentColor"/></svg><span>Tile</span></button>
+        <button class="tab" data-cat="effect" role="tab"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 4c3 8 10 12 10 22a10 10 0 0 1-20 0c0-10 7-14 10-22z" fill="currentColor"/><circle cx="24" cy="30" r="5" fill="var(--panel)"/></svg><span>Effect</span></button>
+        <button class="tab" data-cat="ui" role="tab"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="14" width="32" height="20" rx="10" fill="currentColor"/><circle cx="24" cy="24" r="5" fill="var(--panel)"/></svg><span>UI</span></button>
+      </div>
+    </section>
+
+    <section class="ctl-group" id="ctlStep2">
+      <div class="ctl-head"><span class="ctl-num">2</span><div class="ctl-titles"><span class="ctl-step">Step 2</span><h3>Source &amp; model</h3></div></div>
+      <div class="seg" id="sourceSeg">
+        <button class="seg-btn active" data-src="ai">AI image</button>
+        <button class="seg-btn" data-src="procedural">Procedural <span class="offline">offline</span></button>
+      </div>
+
+    <div id="aiModelBox">
+      <div class="field-label">AI model <span class="dim">(swap anytime)</span></div>
+            <button id="aiModelBtn" class="mp-trigger" type="button" data-mp-title="Model Preference" aria-haspopup="listbox" aria-expanded="false"><span class="mp-name">Auto</span><span class="mp-chip" hidden></span><span class="mp-chev">▾</span></button>
+            <select id="aiModel" class="ai-model-select mp-hidden" aria-label="AI image model">
+        <optgroup label="Auto — free chain, self-switching">
+          <option value="auto">&#9889; Auto — free models, switches itself on limits</option>
+        </optgroup>
+        <optgroup label="Sprites &amp; flat 2D — free, no key">
+          <option value="horde-flat2d">AI Horde · Flat-2D Animerge — flat 2D, made for sprites</option>
+          <option value="horde-novaflat">AI Horde · Nova Flat XL — flat-shaded XL</option>
+          <option value="horde-pixel">AI Horde · AIO Pixel Art — pixel art specialist</option>
+        </optgroup>
+        <optgroup label="Anime &amp; cel — free, no key">
+          <option value="horde-rev">AI Horde · Rev Animated — anime &amp; animated</option>
+          <option value="horde-animagine">AI Horde · Animagine XL — modern anime</option>
+          <option value="horde-anything5">AI Horde · Anything v5 — anime all-rounder</option>
+          <option value="horde-anything">AI Horde · Anything Diffusion — anime classic</option>
+          <option value="horde-counterfeit">AI Horde · Counterfeit — anime, high quality</option>
+          <option value="horde-ghibli">AI Horde · Ghibli Diffusion — whimsical storybook</option>
+        </optgroup>
+        <optgroup label="SDXL quality — free, no key">
+          <option value="horde-juggernaut">AI Horde · Juggernaut XL — best all-rounder, slower</option>
+          <option value="horde-dreamshaper-xl">AI Horde · DreamShaper XL — versatile game art</option>
+          <option value="horde-dreamshaper">AI Horde · Dreamshaper — the classic all-rounder</option>
+          <option value="horde-albedo">AI Horde · AlbedoBase XL — sharp SDXL detail</option>
+          <option value="horde-sdxl">AI Horde · SDXL 1.0 — solid base model</option>
+          <option value="horde-deliberate">AI Horde · Deliberate — better quality</option>
+          <option value="horde-absreality">AI Horde · AbsoluteReality — realistic</option>
+          <option value="horde-icbinp">AI Horde · ICBINP — photoreal</option>
+          <option value="horde-realvis">AI Horde · Realistic Vision — realistic characters</option>
+          <option value="horde-photon">AI Horde · Photon — clean renders, few workers</option>
+        </optgroup>
+        <optgroup label="Fast &amp; new — free, no key">
+          <option value="space-flux">HF Space · FLUX.1-schnell — fastest stills (~5s), no key</option>
+          <option value="horde-flux">AI Horde · FLUX.1 Schnell — top quality, no key</option>
+          <option value="horde-zimage">AI Horde · Z-Image-Turbo — fast new model</option>
+          <option value="horde-sd">AI Horde · Stable Diffusion — quick classic</option>
+        </optgroup>
+        <optgroup label="Free key — paste once, stored in this browser's localStorage">
+          <option value="pol-flux">Pollinations · FLUX — top quality</option>
+          <option value="hf-flux">Hugging Face · FLUX.1 schnell — fast FLUX</option>
+        </optgroup>
+      </select>
+      <div id="aiKeyRow" hidden>
+        <input id="aiKey" type="password" autocomplete="off" spellcheck="false"
+               placeholder="paste your key here">
+        <p class="ai-key-hint" id="aiKeyHint"></p>
+      </div>
+      <p class="ai-model-note" id="aiModelNote"></p>
+      <div id="aiStyleRow" hidden>
+        <div class="field-label">Character animation</div>
+        <div class="seg" id="aiStyleSeg" style="grid-template-columns: repeat(2, 1fr);">
+          <button class="seg-btn active" data-style="still">Still + Alive</button>
+          <button class="seg-btn" data-style="strip">AI strip</button>
+        </div>
+        <p class="ai-model-note">Still + Alive: the AI draws ONE character and FrameLab animates it — poses can never be sliced in half. AI strip: the classic multi-pose sheet, cut afterwards.</p>
+      </div>
+    </div>
+    </section>
+
+    <section class="ctl-group" id="ctlStep3">
+      <div class="ctl-head"><span class="ctl-num" id="ctlNum3">3</span><div class="ctl-titles"><span class="ctl-step" id="ctlStepLbl3">Step 3</span><h3 id="ctlTitle3">Options</h3></div></div>
+            <div id="params"></div>
+      <div id="studioPanel" hidden>
+        <div class="field-label">Action <span class="dim">(tap to toggle — these are your animation rows)</span></div>
+        <div class="pick-grid act-grid" id="actGrid">
+          <button type="button" class="pick-card" data-state="idle"><span class="pc-icon">&#129485;</span><span class="pc-label">Idle</span></button>
+          <button type="button" class="pick-card" data-state="walk"><span class="pc-icon">&#128694;</span><span class="pc-label">Walk</span></button>
+          <button type="button" class="pick-card" data-state="run"><span class="pc-icon">&#127939;</span><span class="pc-label">Run</span></button>
+          <button type="button" class="pick-card" data-state="jump"><span class="pc-icon">&#11014;&#65038;</span><span class="pc-label">Jump</span></button>
+          <button type="button" class="pick-card" data-state="attack"><span class="pc-icon">&#9876;&#65038;</span><span class="pc-label">Attack</span></button>
+          <button type="button" class="pick-card" data-state="death"><span class="pc-icon">&#128128;</span><span class="pc-label">Die</span></button>
+        </div>
+        <div class="field-label">Visual style</div>
+        <div class="pick-grid style-grid" id="styleGrid"></div>
+        <div class="field-label">Perspective</div>
+        <div class="pick-grid persp-grid" id="perspGrid">
+          <button type="button" class="pick-card" data-view="side"><span class="pc-label">Side</span><span class="pc-sub">platformer</span></button>
+          <button type="button" class="pick-card" data-view="front"><span class="pc-label">Front</span><span class="pc-sub">face on</span></button>
+          <button type="button" class="pick-card" data-view="3/4 top-down"><span class="pc-label">Top 3/4</span><span class="pc-sub">face visible</span></button>
+          <button type="button" class="pick-card" data-view="top-down"><span class="pc-label">Zenith 90&deg;</span><span class="pc-sub">top down</span></button>
+        </div>
+        <div class="field-label">Frames per animation</div>
+        <div class="stepper"><button type="button" id="frMinus" aria-label="Fewer frames">&minus;</button><span id="frVal">4</span><button type="button" id="frPlus" aria-label="More frames">+</button></div>
+        <div class="field-label">Process the image <span class="dim">(made it in Gemini / ChatGPT / anywhere?)</span></div>
+        <button type="button" class="btn-ghost proc-btn" id="procBtn">Upload an image &rarr; slice &amp; clean it here</button>
+      </div>
+    </section>
+
+    <section class="ctl-group">
+      <div class="ctl-head"><span class="ctl-num">4</span><div class="ctl-titles"><span class="ctl-step">Step 4</span><h3>Describe it</h3></div></div>
+      <textarea id="prompt" rows="3" placeholder="e.g. zombie pirate with a rusty hook hand" aria-label="Describe your sprite"></textarea>
+    </section>
+
+    
+
+    <section class="ctl-group">
+      <div class="ctl-head"><span class="ctl-num">5</span><div class="ctl-titles"><span class="ctl-step">Step 5</span><h3>Background key <span class="dim">— stripped from the sprite</span></h3></div></div>
+      <div class="keys" id="keyRow">
+        <button class="key active" data-key="255,0,255" style="--kc:#ff00ff" title="Magenta"></button>
+        <button class="key" data-key="0,255,0" style="--kc:#00ff00" title="Green"></button>
+        <button class="key" data-key="0,120,255" style="--kc:#0078ff" title="Blue"></button>
+        <button class="key" data-key="255,255,255" style="--kc:#ffffff" title="White"></button>
+        <button class="key" data-key="0,0,0" style="--kc:#000000" title="Black"></button>
+      </div>
+    </section>
+
+    <div class="wiz-btns" id="wizBtns" hidden>
+      <button type="button" class="btn-ghost wiz-back" id="wizBack">&larr; Back</button>
+      <button type="button" class="wiz-next" id="wizNext">Next &rarr;</button>
+    </div>
+    <button id="generate" class="generate">GENERATE SPRITE</button>
+    <div class="gen-note">AI models run free on AI Horde (no key). Procedural runs 100% offline.</div>
+  </aside>
+
+  <!-- ============ RIGHT: PIPELINE + OUTPUT ============ -->
+  <section class="panel stage-panel" data-mml="status">
+    <ol class="stepper" id="stepper">
+      <li data-step="prompt"><span class="dot"></span>Prompt</li>
+      <li data-step="row"><span class="dot"></span>Row gen</li>
+      <li data-step="alpha"><span class="dot"></span>Alpha cleanup</li>
+      <li data-step="extract"><span class="dot"></span>Frame extract</li>
+      <li data-step="atlas"><span class="dot"></span>Atlas pack</li>
+      <li data-step="done"><span class="dot"></span>Done</li>
+    </ol>
+
+    <div class="canvas-wrap">
+      <canvas id="stage"></canvas>
+      <div id="stageMsg" class="stage-msg">Pick a category, describe your sprite, hit generate.</div>
+    </div>
+
+    <div id="pixelSide" class="pixel-side" hidden>
+      <figure class="px-fig">
+        <canvas id="pxOrig"></canvas>
+        <figcaption id="pxOrigCap" class="dim">original</figcaption>
+      </figure>
+      <figure class="px-fig">
+        <canvas id="pxOut"></canvas>
+        <figcaption id="pxOutCap" class="dim">pixel art</figcaption>
+      </figure>
+    </div>
+
+    <div id="retryBar" class="retry-bar" hidden>
+      <span class="retry-msg" id="retryMsg"></span>
+      <div class="retry-actions">
+        <button id="retryBtn" class="btn-ghost">Retry with stricter prompt</button>
+        <button id="procBtn" class="btn-ghost">Use Procedural instead</button>
+      </div>
+    </div>
+
+    
+  </section>
+
+  <!-- bottom band: visualizer + downloads, full width, centred -->
+  <section class="viz-panel viz-band" aria-label="Visualizer and downloads" data-mml="viz">
+      <div class="viz-head">
+        <span class="viz-title">Visualizer</span>
+        <span class="dim">every sprite + animation, live</span>
+      </div>
+
+      <div class="frames-head" id="framesHead">
+        <span class="field-label">Frames <span class="dim" id="framesMeta"></span></span>
+        <span class="dim">click a frame to download it · arrows reorder the manifest only</span>
+      </div>
+      <div class="frames-row" id="framesRow"></div>
+
+      <div class="frames-head" id="splitHead" hidden>
+        <span class="field-label">Pieces <span class="dim" id="splitMeta"></span></span>
+        <span class="dim">click in order — 1st = frame 1</span>
+      </div>
+      <div class="split-grid" id="splitGrid" hidden></div>
+
+    <div class="preview-export">
+      <div class="preview-box">
+        <div class="field-label">Animation preview <span class="dim" id="previewMeta"></span></div>
+        <canvas id="preview" width="256" height="256"></canvas>
+        <div class="preview-controls">
+          <select id="previewState" aria-label="Animation to preview"></select>
+          <select id="previewFps" aria-label="Preview speed">
+            <option value="6">6 fps</option>
+            <option value="8" selected>8 fps</option>
+            <option value="12">12 fps</option>
+            <option value="24">24 fps</option>
+          </select>
+        </div>
+      </div>
+      <div class="export-box">
+        <div class="field-label">Export</div>
+        <button class="btn bundle" id="dlBundle" disabled>⬇ Download bundle <span class="dim">PNG + GIF + JSON</span></button>
+        <button class="btn" id="dlGodot" disabled>Export for Godot <span class="dim">.tres + PNG</span></button>
+        <button class="btn" id="dlUnity" disabled>Export for Unity <span class="dim">.anim builder pack</span></button>
+        <details class="more-exports">
+          <summary>More exports</summary>
+          <button class="btn" id="dlSheet" disabled>sprite sheet PNG</button>
+          <button class="btn" id="dlJson" disabled>atlas manifest JSON</button>
+          <button class="btn ghost" id="dlFrames" disabled>frames (individual PNGs)</button>
+          <button class="btn" id="dlAnim" disabled>Download animation</button>
+        </details>
+        <button class="btn install-app" id="installApp" hidden>📲 Install App</button>
+        <div class="export-note">Bundle = sheet PNG + animated GIF preview + manifest (absolute frame rects, fps, loop). Your game reads the rects — never recompute.</div>
+      </div>
+    </div>
+    </section>
+</main>
+
+<section id="lab3d" data-mml="lab3d" hidden>
+  <div class="m3-studio">
+    <!-- ===== left rail: Meshy model-panel layout ===== -->
+    <aside class="m3-rail">
+      <div class="m3-modetabs" role="tablist" aria-label="3D creation mode">
+        <button type="button" class="m3-modetab active" id="m3TabImage" role="tab" aria-selected="true">
+          <svg viewBox="0 0 24 24" class="m3-ic"><path d="M4 5h16v14H4z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 16l5-5 4 4 3-3 4 4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="9" r="1.6" fill="currentColor"/></svg>
+          <span>Image to 3D</span>
+        </button>
+        <button type="button" class="m3-modetab" id="m3TabText" role="tab" aria-selected="false">
+          <svg viewBox="0 0 24 24" class="m3-ic"><path d="M5 6h14M12 6v13M9 19h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span>Text to 3D</span>
+        </button>
+      </div>
+
+      <div class="m3-chainbox">
+        <strong>Text to 3D</strong>
+        <p>Describe it — your words go straight to a text-to-3D model and the mesh builds right here. No drawing step, the 2D side is never touched.</p>
+        <div class="m3-tsteps" id="m3TSteps"><span data-s="1" class="on">1 · Describe</span><span data-s="2">2 · Build mesh</span></div>
+        <div class="m3-chain-row"><input type="text" id="m3ChainInput" placeholder="e.g. a tiny robot knight" aria-label="Describe a 3D model"><button type="button" id="m3ChainBtn">Generate 3D model</button></div>
+        <img id="m3ChainThumb" class="m3-chain-thumb" alt="The image drawn for your model" hidden>
+        <p class="m3-chain-status" id="m3ChainStatus"></p>
+      </div>
+
+      <div class="m3-isteps" id="m3ISteps"><span data-s="1" class="on">1 · Image</span><span data-s="2">2 · Model</span><span data-s="3">3 · Generate</span></div>
+
+      <div class="m3-seg" role="group" aria-label="Topology mode">
+        <button type="button" class="m3-seg-btn active" id="m3TopoDetail">High Detail</button>
+        <button type="button" class="m3-seg-btn" id="m3TopoSmart">Smart Topology</button>
+      </div>
+      <p class="m3-topo-note" id="m3TopoNote">High Detail — full-density mesh from the model.</p>
+
+      <label class="m3-label" for="m3Provider">Model</label>
+      <button id="m3ModelBtn" class="mp-trigger dark" type="button" data-mp-title="Model Preference — 3D" aria-haspopup="listbox" aria-expanded="false"><span class="mp-name">AUTO</span><span class="mp-chip" hidden></span><span class="mp-chev">▾</span></button>
+      <select id="m3Provider" class="m3-model-select mp-hidden">
+        <option value="auto">AUTO — the hub picks + switches for you</option>
+        <option value="sf3d">Stable Fast 3D — fast, textured GLB (~10s)</option>
+        <option value="trellis2">TRELLIS.2 — textured, highest detail (~1 min)</option>
+        <option value="instantmesh">InstantMesh — dense multi-view mesh, GLB + OBJ</option>
+        <option value="trellis">TRELLIS (community) — the original, single call</option>
+        <option value="hunyuan-mini">Hunyuan3D-2 Mini Turbo — fastest shape (~15s), untextured</option>
+      </select>
+      <p class="m3-model-desc" id="m3ModelDesc">AUTO rides the whole roster: Stable Fast 3D first, then TRELLIS.2, InstantMesh, TRELLIS, Hunyuan Mini — switching itself if one fails.</p>
+
+      <div class="m3-tip">&#128204; For better results with 2D or hand-drawn art, use Image Generation to give it a 3D look first.</div>
+
+      <label class="m3-label m3-imgonly">Image</label>
+      <div class="m3-drop m3-imgonly" id="m3Drop" role="button" tabindex="0" aria-label="Choose an image to turn into a 3D mesh">
+        <input type="file" id="m3File" accept="image/*" hidden>
+        <img id="m3Thumb" class="m3-thumb" alt="Selected image preview" hidden>
+        <div class="m3-drop-text" id="m3DropText">
+          <svg viewBox="0 0 24 24" class="m3-drop-ic"><path d="M12 16V5m0 0l-4 4m4-4l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 4"/></svg>
+          <strong>Click / Drag &amp; Drop / Paste Image</strong>
+          <span class="dim">Supported formats: .png .jpg .jpeg .webp<br>Max size: 20MB</span>
+        </div>
+        <button type="button" class="m3-drop-genlink" id="m3DropGenLink">Generate Image for 3D &#8250;</button>
+      </div>
+
+      <div class="m3-samples m3-imgonly" id="m3Samples" hidden>
+        <span class="m3-samples-label">From your 2D generations</span>
+        <div class="m3-samples-row" id="m3SamplesRow"></div>
+      </div>
+
+      <button id="m3UseChar" class="m3-bridge m3-imgonly" type="button">Use my 2D character — turn your latest sprite into a mesh</button>
+
+      <div class="m3-mvrow">
+        <span>Multi-view <span class="m3-free-tag">FREE</span></span>
+        <button class="m3-switch" id="m3MultiView" role="switch" aria-checked="false" aria-label="Multi-view generation"><span class="knob"></span></button>
+      </div>
+      <p class="m3-mv-note">Multi-view routes AUTO through InstantMesh's multi-view pipeline first.</p>
+
+      <div class="m3-hintcard m3-imgonly" id="m3HintCard">
+        <span>&#10067; No image yet? Generate one first.</span>
+        <button type="button" id="m3HintGen" class="m3-hint-btn">&#10024; Generate Image</button>
+      </div>
+
+      <label class="m3-label">Resolution <span class="dim">(texture size, where the model supports it)</span></label>
+      <div class="m3-seg m3-res" role="group" aria-label="Texture resolution">
+        <button type="button" class="m3-seg-btn active" data-tex="1024">Standard</button>
+        <button type="button" class="m3-seg-btn" data-tex="2048">Ultra 2K</button>
+        <button type="button" class="m3-seg-btn" data-tex="4096">Ultra 4K</button>
+      </div>
+
+      <details class="m3-token-details">
+        <summary>Hugging Face token (optional — lifts the free GPU quota)</summary>
+        <input type="password" id="m3Token" class="m3-token" placeholder="paste your Hugging Face token" autocomplete="off" spellcheck="false">
+        <p class="ai-key-hint">Free token: <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a> → New token (Read). Stored in this browser's localStorage, never on a server — same token the 2D side uses. Anonymous still works.</p>
+      </details>
+
+      <div class="m3-costline" id="m3CostLine">Free &middot; no signup &middot; no keys</div>
+      <button id="m3Go" class="m3-generate" type="button" disabled>&#10024; Generate</button>
+      <div id="m3Status" class="m3-status" role="status" aria-live="polite">Pick an image to start — it's free.</div>
+    </aside>
+
+    <!-- ===== stage: Meshy viewer layout ===== -->
+    <div class="m3-stage" id="m3Stage">
+      <div class="m3-empty" id="m3StageEmpty">
+        <h3>Ready for a new 3D model?</h3>
+        <div class="m3-steps">
+          <div class="m3-step"><div class="m3-step-art">&#128221;</div><strong>Drop an image</strong><span>Any character, prop or creature</span></div>
+          <div class="m3-step-arrow">&rarr;</div>
+          <div class="m3-step"><div class="m3-step-art">&#129518;</div><strong>Pick a model</strong><span>AUTO switches free models itself</span></div>
+          <div class="m3-step-arrow">&rarr;</div>
+          <div class="m3-step"><div class="m3-step-art">&#129513;</div><strong>Get your mesh</strong><span>Textured GLB for Unity / Unreal / Godot</span></div>
+        </div>
+        <p class="dim">Runs on free community GPUs (Hugging Face Spaces) — queues happen, AUTO rides them out by switching.</p>
+      </div>
+
+      <div id="m3Result" class="m3-result" hidden>
+        <div class="m3-toolbar">
+          <span class="m3-tb-icon" title="3D viewer">&#128421;</span>
+          <span class="m3-tb-sep"></span>
+          <label class="m3-viewpreset">&#129513;
+            <select id="m3ViewPreset" aria-label="View preset">
+              <option value="standard">Standard</option>
+              <option value="turntable">Turntable</option>
+              <option value="top">Top view</option>
+              <option value="front">Front view</option>
+            </select>
+          </label>
+          <span class="m3-tb-sep"></span>
+          <div class="m3-modes" role="group" aria-label="Render mode">
+            <button type="button" class="m3-mode active" id="m3ModeLit" title="Lit — textured, lit render">Lit</button>
+            <button type="button" class="m3-mode" id="m3ModeClay" title="Clay — plain grey, shape only">Clay</button>
+            <button type="button" class="m3-mode" id="m3ModeWire" title="Wireframe — the raw triangles">Wire</button>
+            <button type="button" class="m3-mode" id="m3ModeNormal" title="Normals — surface direction view">Normal</button>
+          </div>
+          <span class="m3-tb-spacer"></span>
+          <button type="button" class="m3-tb-btn" id="m3EnvBtn" title="Environment settings">&#9728; Environment</button>
+        </div>
+
+        <div class="m3-stats" id="m3Stats" hidden>
+          <div class="m3-stat-row"><span>Topology</span><strong id="m3StatTopo">Triangle</strong></div>
+          <div class="m3-stat-row"><span>Faces</span><strong id="m3StatFaces">—</strong></div>
+          <div class="m3-stat-row"><span>Vertices</span><strong id="m3StatVerts">—</strong></div>
+          <div class="m3-stat-row"><span>Printability</span><strong id="m3PrintVal">—</strong></div>
+          <div class="m3-stat-row"><span>Open edges</span><strong id="m3PrintOpen">—</strong></div>
+          <div class="m3-stat-row"><span>Degenerate tris</span><strong id="m3PrintDegen">—</strong></div>
+        </div>
+
+        <div class="m3-canvas-wrap" id="m3CanvasWrap">
+          <model-viewer id="m3Viewer" class="m3-viewer" camera-controls auto-rotate hidden></model-viewer>
+          <div class="m3-rdock" id="m3Rdock">
+            <button type="button" class="m3-rd-btn" id="m3RdEnv" title="Environment settings">&#9728;</button>
+            <button type="button" class="m3-rd-btn" id="m3RdSnap" title="Snapshot — save a PNG of this view">&#128247;</button>
+            <button type="button" class="m3-rd-btn" id="m3RdTex" title="Textures on / off">&#129525;</button>
+            <button type="button" class="m3-rd-btn" id="m3RdHelp" title="Viewer controls">?</button>
+          </div>
+          <div class="m3-renderdock" id="m3RenderDock" role="group" aria-label="Render material">
+            <button type="button" class="m3-sphere sp-wire" data-rmode="wire" title="Wireframe"></button>
+            <button type="button" class="m3-sphere sp-clay" data-rmode="clay" title="Matte clay"></button>
+            <button type="button" class="m3-sphere sp-metal" data-rmode="metal" title="Polished metal"></button>
+            <button type="button" class="m3-sphere sp-normal" data-rmode="normal" title="Normals"></button>
+            <span class="m3-rd-sep"></span>
+            <button type="button" class="m3-sphere sp-grey" data-rmode="grey" title="Studio grey"></button>
+            <button type="button" class="m3-sphere sp-gold" data-rmode="gold" title="Gold"></button>
+            <button type="button" class="m3-sphere sp-cyan" data-rmode="cyan" title="Cyan resin"></button>
+            <span class="m3-rd-sep"></span>
+            <button type="button" class="m3-sphere sp-texmap" data-rmode="metalmap" title="Metallic map (PBR channel)"></button>
+            <button type="button" class="m3-sphere sp-roughmap" data-rmode="roughmap" title="Roughness map (PBR channel)"></button>
+          </div>
+          <div class="m3-helpop" id="m3HelpPop" hidden>
+            <strong>Viewer controls</strong>
+            <span>Drag — orbit &middot; Scroll — zoom &middot; Right-drag — pan</span>
+            <span>The spheres swap the render material. &#128247; saves a PNG of the view.</span>
+          </div>
+        </div>
+
+        <div class="m3-envpop" id="m3EnvPop" hidden>
+          <div class="m3-env-head">Environment Settings</div>
+          <div class="m3-env-row"><span>HDRI</span>
+            <select id="m3EnvHdri">
+              <option value="room">Indoor Lighting</option>
+              <option value="studio">Studio Bright</option>
+              <option value="dusk">Dusk Warm</option>
+            </select>
+          </div>
+          <div class="m3-env-row"><span>Strength</span><input type="range" id="m3EnvStrength" min="20" max="200" value="100"></div>
+          <div class="m3-env-row"><span>Auto-rotate</span><button class="m3-switch on" id="m3EnvRotate" role="switch" aria-checked="true" aria-label="Auto-rotate"><span class="knob"></span></button></div>
+          <div class="m3-env-row"><span>Background</span><button class="m3-switch on" id="m3EnvBg" role="switch" aria-checked="true" aria-label="Show background"><span class="knob"></span></button></div>
+        </div>
+
+        <div class="m3-envpop m3-exppop" id="m3ExpPop" hidden>
+          <div class="m3-env-head">Export</div>
+          <div class="m3-env-row"><span>File name</span><input type="text" id="m3ExpName" value="framelab-mesh" spellcheck="false"></div>
+          <div class="m3-env-row"><span>Format</span><select id="m3ExpFmt"><option value="glb">GLB</option><option value="obj">OBJ</option><option value="fbx">FBX</option></select></div>
+          <p class="m3-tip" style="margin:2px 0 0">OBJ + FBX are exported from the loaded mesh itself — any provider. FBX carries geometry + color; GLB keeps the textures.</p>
+          <div class="m3-env-row"><span>Texture</span><strong id="m3ExpTex">Standard 1024</strong></div>
+          <button type="button" class="m3-exp-go" id="m3ExpGo">&#11015; Export — free</button>
+        </div>
+
+        <div class="m3-envpop m3-bridgepop" id="m3BridgePop" hidden>
+          <div class="m3-env-head">Engine Bridge — take this mesh into…</div>
+          <div class="m3-bridge-list" id="m3BridgeList"></div>
+          <p class="m3-bridge-note">One GLB, every engine. Downloads are named per engine so your project folder stays tidy.</p>
+        </div>
+
+        <div class="m3-docks">
+          <div class="m3-dock">
+            <button type="button" class="m3-dock-btn" id="m3ShareBtn" title="Share this page">&#128228; Share</button>
+            <button type="button" class="m3-download" id="m3ExportBtn">&#11015; Export <span id="m3GlbSize" class="m3-dl-size"></span></button>
+            <a id="m3Glb" href="#" download="framelab-mesh.glb" hidden></a>
+            <a id="m3Obj" class="m3-dock-btn" href="#" download="framelab-mesh.obj" hidden>&#11015; OBJ <span id="m3ObjSize" class="m3-dl-size"></span></a>
+          </div>
+          <div class="m3-dock">
+            <button type="button" class="m3-dock-btn" id="m3DockAnimate" title="Animate — motion presets">&#127939; Animate</button>
+            <button type="button" class="m3-dock-btn" id="m3DockPrint" title="Print — post-processing">&#128424; Print</button>
+            <button type="button" class="m3-dock-btn" id="m3BridgeBtn" title="Engine Bridge — Unity, Unreal, Godot, Blender">&#127753; Engines</button>
+          </div>
+        </div>
+
+        <div class="m3-reusebar">
+          <button type="button" class="m3-reuse-btn" id="m3ReuseBtn">&#8617; Reuse settings</button>
+          <p class="lab3d-note" id="m3ResultNote"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="labAnimate" class="lab-animate" data-mml="animate" hidden>
+  <div class="la-head">
+    <h2>Animate</h2>
+    <p class="dim">Procedural motions that play live on your mesh in the viewer — no rig, no bones, no cost.</p>
+  </div>
+  <div class="la-rigbanner">
+    <div class="la-rig-art">&#129460;</div>
+    <div class="la-rig-text"><strong>Rig the model to animate</strong><span>Your GLB carries no skeleton — these motions move the whole mesh procedurally, right in the viewer.</span></div>
+    <button type="button" class="la-rig-btn" id="laRigBtn">Rig &amp; preview</button>
+  </div>
+  <input type="search" id="laSearch" class="la-search" placeholder="Search motion" aria-label="Search motion">
+  <h3 class="la-lib-head">Library</h3>
+  <div class="la-cards">
+    <div class="la-card">
+      <strong>Text to Motion</strong>
+      <p>Describe it in a few words — the free library matches it to a real motion and plays it.</p>
+      <div class="la-t2m-row"><input type="text" id="laT2mInput" placeholder="e.g. victory dance" aria-label="Describe a motion"><button type="button" id="laT2mBtn">Generate</button></div>
+      <p class="la-note" id="laT2mStatus"></p>
+    </div>
+    <div class="la-card">
+      <strong>Video to Motion</strong>
+      <p>Pose-capture from video is on the lab bench — not in the free hub yet. Preview your clip here meanwhile:</p>
+      <button type="button" class="la-vid-btn" id="laVidBtn">Pick a video</button>
+      <input type="file" id="laVidFile" accept="video/*" hidden>
+      <video id="laVidPrev" class="la-vid" controls playsinline hidden></video>
+    </div>
+  </div>
+  <h3 class="la-lib-head">AI Motions <span class="dim">— yours this session</span></h3>
+  <div class="la-mine" id="laMine"><p class="dim" id="laMineEmpty">Your motions will appear here.</p></div>
+  <h3 class="la-lib-head">Preset Motions</h3>
+  <div class="la-grid" id="laGrid"></div>
+  <p class="la-note" id="laStatus" role="status" aria-live="polite"></p>
+</section>
+
+<section id="labPrint" class="lab-animate lab-print" data-mml="print" hidden>
+  <div class="la-head">
+    <h2>Print &amp; Post-Processing</h2>
+    <p class="dim">Judged by the same yardstick the slicer world uses — real numbers from your actual mesh, never estimates.</p>
+  </div>
+  <div class="la-cards">
+    <div class="la-card pp-card">
+      <strong>&#128424; Print Check</strong>
+      <div class="pp-stats">
+        <div><span>Faces</span><strong id="ppFaces">—</strong></div>
+        <div><span>Vertices</span><strong id="ppVerts">—</strong></div>
+        <div><span>Open edges</span><strong id="ppOpen">—</strong></div>
+        <div><span>Degenerate tris</span><strong id="ppDegen">—</strong></div>
+      </div>
+      <p id="ppVerdict">Load or generate a mesh and the check runs automatically.</p>
+    </div>
+    <div class="la-card pp-card">
+      <strong>&#9986; Split to Print</strong>
+      <p>Split the mesh at its middle height for smaller printers. Centroid split — the seam is jagged, a minute of sanding hides it.</p>
+      <div class="pp-btnrow">
+        <button type="button" id="ppSplitTop">&#11015; Top half</button>
+        <button type="button" id="ppSplitBottom">&#11015; Bottom half</button>
+        <button type="button" id="ppSplitParts">&#11015; Each part</button>
+      </div>
+      <p class="la-note" id="ppSplitStatus"></p>
+    </div>
+    <div class="la-card pp-card">
+      <strong>&#127912; Multi-Color Print</strong>
+      <p>Quantize your source image down to a 5-color palette — the color map for a multi-filament print.</p>
+      <button type="button" class="la-vid-btn" id="ppQuantBtn">Build palette from source image</button>
+      <div class="pp-palette" id="ppPalette"></div>
+      <canvas id="ppQuantCanvas" class="pp-quant" width="330" height="330" hidden></canvas>
+      <div class="pp-btnrow">
+        <button type="button" id="ppQuantDl" hidden>&#11015; Palette PNG</button>
+        <button type="button" id="ppHexCopy" hidden>Copy hex codes</button>
+      </div>
+      <p class="la-note" id="ppQuantStatus"></p>
+    </div>
+    <div class="la-card pp-card">
+      <strong>&#129521; Add Base</strong>
+      <p>Preview a display base under the model in the viewer, then export a GLB with the base baked in.</p>
+      <div class="pp-btnrow pp-bases">
+        <button type="button" data-base="circle">&#11044; Circle</button>
+        <button type="button" data-base="square">&#9632; Square</button>
+        <button type="button" data-base="hex">&#11042; Hex</button>
+        <button type="button" id="ppBaseRemove">Remove</button>
+      </div>
+      <div class="pp-btnrow"><button type="button" id="ppBaseExport">&#11015; GLB with base</button></div>
+      <p class="la-note" id="ppBaseStatus"></p>
+    </div>
+    <div class="la-card pp-card">
+      <strong>&#9998; Edit <span class="pp-new">NEW</span></strong>
+      <p>Quick transforms on the live model — they carry into Split and Base exports.</p>
+      <div class="pp-btnrow">
+        <button type="button" id="ppMirror">&#8646; Mirror X</button>
+        <button type="button" id="ppRotY">&#10227; Rotate 90&deg;</button>
+        <button type="button" id="ppEditReset">Reset</button>
+      </div>
+      <p class="la-note" id="ppEditStatus"></p>
+    </div>
+    <div class="la-card pp-card">
+      <strong>&#128640; Send to Printer</strong>
+      <p>Bambu Studio and PrusaSlicer open .glb directly. Download the mesh and drop it straight in.</p>
+      <div class="pp-btnrow"><button type="button" id="ppSendDl">&#11015; Download GLB for slicer</button></div>
+      <p class="la-note" id="ppSendStatus"></p>
+    </div>
+  </div>
+</section>
+
+<section id="labSkills" class="lab-animate lab-skills" data-mml="skills">
+  <div class="la-head">
+    <h2>Skills</h2>
+    <p class="dim">One-tap agent shortcuts and word-to-figure presets — every one runs on the free chain: words in, mesh out.</p>
+  </div>
+  <div class="chiprow" id="agentChips">
+    <button type="button" class="agent-chip" data-chip="img3d">&#128444; Image to 3D</button>
+    <button type="button" class="agent-chip" data-chip="batch">&#128193; Batch Models</button>
+    <button type="button" class="agent-chip" data-chip="rig">&#129460; Rig a Model</button>
+    <button type="button" class="agent-chip" data-chip="remesh">&#128376; Remesh — Smart Mesh</button>
+    <button type="button" class="agent-chip" data-chip="tex2k">&#127912; 2K Texture</button>
+    <button type="button" class="agent-chip" data-chip="tex4k">&#127912; 4K Texture</button>
+    <button type="button" class="agent-chip" data-chip="mv">&#128065; Multi-view</button>
+  </div>
+  <div class="sk-grid" id="skGrid"></div>
+  <p class="la-note" id="skStatus" role="status" aria-live="polite"></p>
+</section>
+
+<section id="labAssets" class="assets-sec" data-mml="assets">
+  <div class="assets-head">
+    <div>
+      <h2>My Assets</h2>
+      <p class="assets-sub">Everything you generate in this hub lands here — this browser session only. No account, nothing uploaded, ever.</p>
+    </div>
+    <div class="assets-actions">
+      <input id="assetsSearch" type="search" placeholder="Search my generation" aria-label="Search my assets">
+      <button id="assetsUpload" class="assets-upload" type="button">&#9646; Upload</button>
+      <button id="assetsUpload3d" class="assets-upload" type="button">&#129513; Upload 3D (GLB)</button>
+      <input type="file" id="assetsGlbFile" accept=".glb,.gltf" hidden>
+    </div>
+  </div>
+  <div class="assets-bar">
+    <div class="assets-filters" role="group" aria-label="Filter assets">
+      <button type="button" class="assets-fbtn active" data-f="all">&#9700; All</button>
+      <button type="button" class="assets-fbtn" data-f="image">&#9646; Images</button>
+      <button type="button" class="assets-fbtn" data-f="model">&#9646; Models</button>
+      <button type="button" class="assets-fbtn" data-f="animation">&#127939; Animation</button>
+    </div>
+    <label class="assets-batch"><input type="checkbox" id="assetsBatch"> Batch Selection</label>
+  </div>
+  <div class="assets-grid" id="assetsGrid"></div>
+  <p class="assets-empty" id="assetsEmpty">Nothing here yet — generate a sprite or a mesh and it shows up here.</p>
+  <div class="assets-foot" id="assetsFoot" hidden>
+    <span id="assetsSelCount">0 selected</span>
+    <button id="assetsDlSel" class="assets-upload" type="button">&#11015; Download selected</button>
+    <button id="assetsClearSel" class="assets-fbtn" type="button">Clear</button>
+  </div>
+</section>
+
+<!-- phone-only sticky generate bar: thumb-reachable, always visible -->
+<div class="mobile-bar">
+  <button id="generateMobile" class="generate">GENERATE SPRITE</button>
+</div>
+
+<div id="mpPop" class="mp-pop" hidden role="listbox" aria-label="Model preference">
+  <div class="mp-head"><span class="mp-title">Model Preference</span><button type="button" class="mp-x" onclick="mpClose()" aria-label="Close model list">✕</button></div>
+  <div class="mp-list"></div>
+</div>
+
+<!-- customize popover: theme switcher + aura controls (tracker's Customize spirit) -->
+<div class="customize" id="customizePop" role="dialog" aria-label="Customize theme, animations and aura" hidden>
+  <div class="cust-head">Customize</div>
+  <div class="cust-label">Animations</div>
+  <div class="cust-row">
+    <span>Animations <span class="dim">(master)</span></span>
+    <button class="switch" id="animToggle" role="switch" aria-checked="false" aria-label="Toggle animations"><span class="knob"></span></button>
+  </div>
+  <p class="dim" style="margin:2px 0 0;font-size:12px">Off = still site: no drifting background, marquees, logo pulse or scroll entrances. Sprite previews still play.</p>
+  <div class="cust-label">Theme</div>
+  <div class="swatches" id="swatches"></div>
+  <div class="cust-label">Background aura</div>
+  <div class="cust-row">
+    <span>Aurora background</span>
+    <button class="switch" id="auraToggle" role="switch" aria-checked="true" aria-label="Toggle aurora background"><span class="knob"></span></button>
+  </div>
+  <div class="cust-row">
+    <span>Intensity</span>
+    <input type="range" id="auraIntensity" min="10" max="100" value="72" aria-label="Aura intensity">
+  </div>
+  <div class="cust-label">RGB separators</div>
+  <div class="cust-row">
+    <span>RGB lines</span>
+    <button class="switch" id="rgbToggle" role="switch" aria-checked="true" aria-label="Toggle RGB separators"><span class="knob"></span></button>
+  </div>
+  <div class="cust-row">
+    <span>Flow speed</span>
+    <input type="range" id="rgbSpeed" min="2" max="20" value="7" aria-label="RGB flow speed">
+  </div>
+  <div class="cust-row">
+    <span>Breathing</span>
+    <button class="switch" id="rgbBreathe" role="switch" aria-checked="false" aria-label="Toggle RGB breathing mode"><span class="knob"></span></button>
+  </div>
+  <div class="cust-row">
+    <span>Rainbow flow <span class="dim">(off = theme colours)</span></span>
+    <button class="switch" id="rgbRainbow" role="switch" aria-checked="false" aria-label="Toggle rainbow separator colours"><span class="knob"></span></button>
+  </div>
+  <button class="save-btn" id="custSave" type="button">💾 Save<span class="save-tick" id="saveTick">Saved ✓</span></button>
+</div>
+
+<footer class="foot">
+  <span>m4ster FrameLab · MIT open source · runs 100% in your browser · free forever, no login, no paywall · AI generation sends your prompt (2D) or image (3D) to the free provider you pick — everything else never leaves your machine</span>
+  <button id="resetLayoutBtn" class="foot-reset" type="button" title="Clear your saved layout and restore the default arrangement">Reset layout</button>
+</footer>
+
+<script>window.MML_DEFAULT={"desktop":{"pos":{"cats":{"x":0,"y":0,"r":0,"s":1},"tools":{"x":0,"y":0,"r":0,"s":1},"gallery":{"x":0,"y":0,"r":0,"s":1},"presets":{"x":0,"y":0,"r":0,"s":1},"lab2d":{"x":0,"y":0,"r":0,"s":1},"viz":{"x":0,"y":0,"r":0,"s":1},"lab3d":{"x":0,"y":0,"r":0,"s":1},"animate":{"x":0,"y":0,"r":0,"s":1},"print":{"x":0,"y":0,"r":0,"s":1},"skills":{"x":0,"y":0,"r":0,"s":1},"assets":{"x":0,"y":0,"r":0,"s":1},"wizard":{"x":0,"y":0,"r":0,"s":1},"status":{"x":0,"y":0,"r":0,"s":1}},"pos3":{"lab3d":{"x":0,"y":0,"r":0,"s":1},"animate":{"x":0,"y":0,"r":0,"s":1},"print":{"x":0,"y":0,"r":0,"s":1},"skills":{"x":0,"y":0,"r":0,"s":1},"assets":{"x":0,"y":0,"r":0,"s":1}},"pinned":[],"custom":[],"alive":["hero","cats","tools","gallery","presets","wizard","status","viz","lab3d","animate","print","skills","assets"]},"mobile":{"pos":{"hero":{"x":0,"y":0,"r":0,"s":1},"cats":{"x":0,"y":0,"r":0,"s":1},"tools":{"x":0,"y":0,"r":0,"s":1},"gallery":{"x":0,"y":0,"r":0,"s":1},"presets":{"x":0,"y":0,"r":0,"s":1},"wizard":{"x":0,"y":0,"r":0,"s":1},"status":{"x":0,"y":0,"r":0,"s":1},"viz":{"x":0,"y":0,"r":0,"s":1},"assets":{"x":0,"y":0,"r":0,"s":1}},"pos3":{"lab3d":{"x":0,"y":0,"r":0,"s":1},"animate":{"x":0,"y":0,"r":0,"s":1},"print":{"x":0,"y":0,"r":0,"s":1},"skills":{"x":0,"y":0,"r":0,"s":1},"assets":{"x":0,"y":0,"r":0,"s":1}},"pinned":[],"custom":[]}};</script>
+<script src="js/app.js"></script>
+<script>
+/* SW update rescue: the v1 worker was cache-first, so a page it controls
+ * keeps serving the previous build even after a fix deploys. Register with
+ * updateViaCache:"none", force an update check, and when a new worker takes
+ * control reload ONCE (session-guarded) so the fresh build lands in the
+ * same visit instead of one visit late. */
+(function () {
+  if (!("serviceWorker" in navigator)) return;
+  var hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", function () {
+    if (!hadController) return;
+    try {
+      if (sessionStorage.getItem("swReloaded")) return;
+      sessionStorage.setItem("swReloaded", "1");
+    } catch (e) {}
+    location.reload();
+  });
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+      .then(function (reg) { if (reg) reg.update(); })
+      .catch(function () {});
+  });
+})();
+</script>
+</body>
+</html>

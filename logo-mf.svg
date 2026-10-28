@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- m4ster FrameLab — hand-drawn MFL monogram (game-dev sketch style) -->
+  <defs>
+    <filter id="gm" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="gf" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="#1a1428"/>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="none" stroke="#a78bfa" stroke-width="3"/>
+  <g filter="url(#gm)" fill="none" stroke="#a78bfa" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10,46 C9,38 11,28 10,20 C14,26 19,32 23,37 C27,32 32,26 36,20 C35,28 37,38 36,46"/>
+  </g>
+  <g filter="url(#gf)" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M44,20 C43,26 45,32 44,38"/>
+    <path d="M38,21 C42,20 48,20 52,21"/>
+    <path d="M40,29 C43,28 47,28 50,29"/>
+  </g>
+  <g filter="url(#gm)" fill="none" stroke="#a78bfa" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M49,40 C48,44 50,48 49,52"/>
+    <path d="M49,51 C52,51 55,51 57,50"/>
+  </g>
+</svg>
