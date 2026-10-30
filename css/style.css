@@ -179,6 +179,12 @@ button.brand { background: none; border: 0; padding: 0; font: inherit; color: in
   background: transparent;
 }
 .gh-link:hover { border-color: var(--violet); color: var(--violet); }
+.foot-reset {
+  color: var(--text); font-family: var(--mono); font-size: 13px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 16px;
+  background: transparent;
+}
+.foot-reset:hover { border-color: var(--violet); color: var(--violet); }
 
 /* ---------- layout: PC = wide two-panel tool ---------- */
 .layout {
@@ -425,6 +431,7 @@ textarea#prompt:focus { outline: none; border-color: var(--violet); }
 }
 .btn-ghost:hover, .export-box .btn:hover:not(:disabled) { border-color: var(--violet); color: var(--violet); }
 .export-box .btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-ghost:disabled { opacity: .4; cursor: not-allowed; }
 .export-box .btn.ghost { color: var(--dim); }
 .export-note { color: var(--dim); font-size: 11px; line-height: 1.6; }
 
@@ -571,6 +578,7 @@ body.no-rgb .foot::before { display: none; }
 }
 .switch[aria-checked="true"] { background: var(--violet); border-color: var(--violet); }
 .switch[aria-checked="true"] .knob { left: 22px; background: var(--on-accent); }
+.switch:hover { border-color: var(--violet); }
 .cust-row input[type="range"] { accent-color: var(--violet); width: 120px; }
 @media (max-width: 767px) {
   .customize { left: 12px; right: 12px; width: auto; top: 60px; }
@@ -999,6 +1007,26 @@ textarea:focus:not(:focus-visible) { outline: none; }
   .monogram-wrap::after { opacity: 0; }
 }
 
+/* ---------- master Animations toggle: html.anim-off = still site ----------
+ * The head script adds .anim-off to <html> unless localStorage
+ * "m4ster.animations" === "1" (OFF by default); the Customize switch
+ * flips it live. Every decorative animation stops AND rests at its
+ * final visible state — entrance elements are forced visible rather
+ * than frozen at their opacity:0 start frame. Deliberately NOT here:
+ * transitions (hover micro-interactions stay alive) and content
+ * playback (sprite previews, canvas tools, the 3D turntable). */
+html.anim-off .orb-1, html.anim-off .orb-2, html.anim-off .orb-3 { animation: none; }
+html.anim-off .reveal, html.anim-off .reveal-pop { opacity: 1 !important; transform: none !important; animation: none !important; }
+html.anim-off .marquee-track, html.anim-off .fresh-track { animation: none; }
+html.anim-off .rgb-sep, html.anim-off .topbar::after, html.anim-off .marquee::before,
+html.anim-off .marquee::after, html.anim-off .foot::before, html.anim-off .mobile-bar::before { animation: none; }
+html.anim-off .monogram { animation: none; }
+html.anim-off .monogram-wrap::after { animation: none; }
+html.anim-off .monogram .glow-m, html.anim-off .monogram .glow-f, html.anim-off .monogram .glow-l { animation: none; }
+html.anim-off .cursor-orb.is-cta::after { animation: none; }
+html.anim-off .stepper li.active .dot, html.anim-off .stepper li.done .dot { animation: none; }
+html.anim-off .controls.wizard .ctl-group.wiz-on { animation: none; }
+
 /* ---------- v6.5: m4ster signature cursor + live interactivity ----------
  * The m4ster fingerprint: a custom orb follows the mouse everywhere
  * (desktop/fine-pointer only, respects reduced-motion). Orb glow uses
@@ -1100,6 +1128,7 @@ body.mode-pixelart .mobile-bar { display: none !important; }
 /* side-by-side: original | pixel art */
 .pixel-side { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
 .pixel-side[hidden] { display: none; }
+#pxEmpty { grid-column: 1 / -1; margin: 4px 0; }
 .px-fig {
   margin: 0; background: var(--ink); border: 1px solid var(--line);
   border-radius: var(--r); padding: 12px; text-align: center; min-width: 0;
@@ -1228,6 +1257,7 @@ body.mode-draglab .mobile-bar { display: none !important; }
   text-align: center; margin-top: 10px; width: 100%;
 }
 .dl-download:hover { background: var(--violet); color: var(--on-accent); }
+.dl-download:disabled { opacity: .4; cursor: not-allowed; }
 /* v8.6 liquify brushes: in Brush mode the drawn ring replaces the OS
    cursor over the photo (the ring's size IS the brush size) */
 .draglab-box canvas.dl-brush { cursor: none; }
@@ -1980,6 +2010,7 @@ body.dim-3d .fresh-lab { display: none; }
   background: linear-gradient(180deg, var(--violet), var(--violet-deep));
   font: 700 14px var(--font);
 }
+.wiz-next:hover { filter: brightness(1.07); }
 .controls.wizard .ctl-group {
   display: none; border: 0; background: transparent;
   padding: 4px 2px; margin-bottom: 6px;
@@ -2235,6 +2266,7 @@ body.dim-3d .fresh-lab { display: none; }
 .m3-modes { display: flex; background: #101116; border: 1px solid #26272e; border-radius: 10px; padding: 3px; gap: 3px; }
 .m3-mode { border: 0; background: transparent; color: #9ba0ab; font: 600 12.5px/1 inherit; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
 .m3-mode.active { background: #a6f750; color: #131503; box-shadow: 0 3px 8px rgba(0,0,0,.4); }
+.m3-modetab:hover, .m3-seg-btn:hover:not(.active), .m3-mode:hover:not(.active), .m3-switch:hover { border-color: rgba(166,247,80,.6); color: #eef1d6; }
 .m3-tb-btn {
   border: 1px solid #2c2e35; background: #17181d; color: #d7dae1; cursor: pointer;
   font: 600 12.5px/1 inherit; padding: 9px 12px; border-radius: 10px;
@@ -2322,6 +2354,8 @@ body.dim-3d .fresh-lab { display: none; }
   border-color: #33353d; box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 4px 10px rgba(0,0,0,.4);
   font-size: 13.5px;
 }
+.mp-trigger:hover { border-color: var(--violet); }
+.mp-trigger.dark:hover { border-color: rgba(166,247,80,.6); }
 .mp-pop {
   position: fixed; z-index: 400; max-height: 62vh; display: flex; flex-direction: column;
   background: rgba(19,19,23,.98); border: 1px solid #2e2f36; border-radius: 18px;
@@ -2332,7 +2366,7 @@ body.dim-3d .fresh-lab { display: none; }
   display: flex; align-items: center; justify-content: space-between;
   padding: 13px 16px 9px; font: 700 14.5px/1.2 inherit; color: #f2f4f7;
 }
-.mp-x { border: 0; background: none; color: #9ba0ab; font-size: 13px; cursor: pointer; padding: 4px; }
+.mp-x { border: 0; background: none; color: #9ba0ab; font-size: 13px; cursor: pointer; padding: 8px; }
 .mp-list { overflow-y: auto; padding: 0 8px 10px; }
 .mp-sec {
   padding: 10px 8px 5px; color: #777d89; font: 700 11px/1 inherit;
@@ -2349,6 +2383,14 @@ body.dim-3d .fresh-lab { display: none; }
 .mp-rname { font: 600 13.5px/1.3 inherit; color: #f2f4f7; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .mp-rdesc { font: 400 12px/1.45 inherit; color: #9ba0ab; }
 .mp-check { color: #a6f750; font-weight: 800; flex: none; padding-top: 1px; }
+.mp-health { display: inline-flex; align-items: center; gap: 5px; font: 600 11px/1 inherit; color: #9ba0ab; }
+.mp-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: #6b7280; }
+.mp-dot.ok { background: #4ade80; }
+.mp-dot.warn { background: #fbbf24; }
+.mp-dot.off { background: #f87171; }
+.mp-star { flex: none; padding: 2px 4px; font-size: 15px; line-height: 1; color: #777d89; cursor: pointer; border-radius: 6px; }
+.mp-star:hover { color: #fbbf24; background: #26272e; }
+.mp-star.on { color: #fbbf24; }
 
 /* ============ TEST: My Assets (Meshy copy) ============ */
 .assets-sec { width: 100%; max-width: 1960px; margin: 8px auto 0; padding: 22px 18px 6px; }
@@ -2372,6 +2414,8 @@ body.dim-3d .fresh-lab { display: none; }
   font: 600 13px/1 inherit; padding: 9px 14px; border-radius: 10px;
 }
 .assets-fbtn.active { background: #a6f750; border-color: #a6f750; color: #131503; }
+.assets-fbtn:hover { border-color: rgba(166,247,80,.6); }
+.assets-upload:hover { filter: brightness(1.07); }
 .assets-batch { font: 600 13px/1 inherit; display: flex; gap: 7px; align-items: center; cursor: pointer; }
 .assets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
 .asset-card {
@@ -2432,6 +2476,8 @@ body.dim-3d .fresh-lab { display: none; }
 .m3-bridge-row strong{flex:0 0 84px;font-size:13px;color:#f0f0f4}
 .m3-bridge-row span{flex:1;font-size:11.5px;color:#a9a9b5;line-height:1.35}
 .m3-bridge-dl{flex:0 0 auto;background:#23232e;border:1px solid rgba(255,255,255,.16);color:#c9f79a;border-radius:8px;padding:5px 9px;font-size:12px;text-decoration:none}
+.m3-bridge-guide{display:block;width:100%;margin-top:10px;background:#23232e;border:1px solid rgba(255,255,255,.16);color:#c9f79a;border-radius:8px;padding:8px 9px;font-size:12.5px;font-weight:600;cursor:pointer}
+.m3-bridge-guide:hover{border-color:#a6f750;color:#eef1d6}
 .m3-bridge-note{font-size:11.5px;color:#8b8b98;margin-top:9px;line-height:1.45}
 .m3-drop-genlink{display:block;margin:10px auto 2px;background:none;border:none;color:#a6f750;font-size:13px;font-weight:600;cursor:pointer}
 .m3-drop-genlink:hover{text-decoration:underline}
@@ -2454,6 +2500,8 @@ body.dim-3d .fresh-lab { display: none; }
 .la-t2m-row{display:flex;gap:8px;margin-top:10px}
 .la-t2m-row input{flex:1;padding:9px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:#0f0f14;color:#eee;font-size:13px}
 .la-t2m-row button,.la-vid-btn{background:#23232e;border:1px solid rgba(255,255,255,.16);color:#c9f79a;border-radius:9px;padding:9px 14px;cursor:pointer;font-weight:600}
+.la-rig-btn:hover{filter:brightness(1.07)}
+.la-t2m-row button:hover,.la-vid-btn:hover{border-color:rgba(166,247,80,.6)}
 .la-note{font-size:12.5px;color:#9fe870;min-height:16px;margin-top:8px}
 .la-vid{width:100%;margin-top:10px;border-radius:10px}
 .la-mine{display:flex;flex-wrap:wrap;gap:8px}
@@ -2531,7 +2579,7 @@ body:not(.dim-3d) #labSkills { display: none !important; }
 .gopen { min-height: 36px; padding: 7px; }
 .gal-nav { float: right; display: inline-flex; gap: 6px; }
 .gal-arrow {
-  width: 30px; height: 30px; border-radius: 9px; cursor: pointer;
+  width: 38px; height: 38px; border-radius: 9px; cursor: pointer;
   background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.02));
   border: 1px solid var(--line); color: var(--text); font-size: 17px; line-height: 1;
   box-shadow: 0 2px 6px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12);

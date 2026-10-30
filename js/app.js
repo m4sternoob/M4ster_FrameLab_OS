@@ -25,6 +25,18 @@ function mulberry32(seed) {
 
 function fail(msg) { throw new Error(msg); }
 
+/* one friendly line for any thrown error: network, timeout and abort
+ * failures get plain words instead of raw exception text; anything
+ * else keeps its own message, capped so a long string can never
+ * flood a status line. */
+function humanErr(e) {
+  const m = e && e.message ? String(e.message) : String(e);
+  if (/failed to fetch|networkerror|network error|load failed/i.test(m)) return "couldn't be reached (network)";
+  if (/timed out|timeout/i.test(m)) return "timed out";
+  if (/aborted|aborterror/i.test(m)) return "was stopped";
+  return m.length > 140 ? m.slice(0, 140) + "…" : m;
+}
+
 function makeCanvas(w, h) {
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
@@ -180,21 +192,21 @@ function renderParams() {
   } else if (cat === "pixelart") {
     const px = pxState();
     box.innerHTML = `
-      <div class="field-label">Image &rarr; pixel art <span class="dim">(100% offline)</span></div><div class="row"><button type="button" class="btn-ghost" id="pxPick" style="text-align:center">Upload image</button><input type="file" id="pxFile" accept="image/*" hidden></div><div class="field-label">Output size</div><div class="px-dims" id="pxDims">
+      <div class="field-label">Pixel Converter <span class="dim">(100% offline)</span></div><div class="row"><button type="button" class="btn-ghost" id="pxPick" style="text-align:center">Upload image</button><input type="file" id="pxFile" accept="image/*" hidden></div><div class="field-label">Output size</div><div class="px-dims" id="pxDims">
         ${[16, 32, 48, 64, 96, 128].map(s => `<button type="button" class="seg-btn${s === px.w ? " active" : ""}" data-px="${s}">${s}</button>`).join("")}
         <button type="button" class="seg-btn" id="pxOrigBtn" title="use the uploaded image's original dimensions">Original</button>
       </div><div class="row" style="margin-top:8px"><span class="dim">W</span><input type="number" class="num" id="pxW" min="8" max="1024" value="${px.w}"><span class="dim">H</span><input type="number" class="num" id="pxH" min="8" max="1024" value="${px.h}"></div><div class="field-label">Tile grid <span class="dim">(tilemap overlay)</span></div><div class="row"><label class="chk"><input type="checkbox" id="pxGrid"${px.grid ? " checked" : ""}> show grid</label><select id="pxTile" aria-label="tile size">${[8, 16, 24, 32, 48, 64].map(t => `<option value="${t}"${t === px.tile ? " selected" : ""}>${t}px tiles</option>`).join("")}</select><span class="dim" id="pxTileCount"></span></div><div class="field-label">Colors</div><div class="row"><select id="pxColors" class="grow">
           ${[[2, "2 colors"], [4, "4 colors"], [8, "8 colors"], [16, "16 colors"], [32, "32 colors"], [256, "256 colors"], [0, "Full color"]].map(([v, lbl]) => `<option value="${v}"${v === px.colors ? " selected" : ""}>${lbl}</option>`).join("")}
-        </select></div><label class="chk"><input type="checkbox" id="pxDither"${px.dither ? " checked" : ""}> dithering <span class="dim">(Floyd&ndash;Steinberg)</span></label><div class="row" style="margin-top:8px"><span class="dim">preview</span><input type="range" id="pxScale" min="2" max="16" value="${px.scale}" class="grow" aria-label="preview scale"><span class="dim" id="pxScaleVal">&times;${px.scale}</span></div><button type="button" class="btn-ghost px-download" id="pxDownload">Download pixel art</button><div class="dim">Upload any image — it never leaves your browser.</div>`;
+        </select></div><label class="chk"><input type="checkbox" id="pxDither"${px.dither ? " checked" : ""}> dithering <span class="dim">(Floyd&ndash;Steinberg)</span></label><div class="row" style="margin-top:8px"><span class="dim">preview</span><input type="range" id="pxScale" min="2" max="16" value="${px.scale}" class="grow" aria-label="preview scale"><span class="dim" id="pxScaleVal">&times;${px.scale}</span></div><button type="button" class="btn-ghost px-download" id="pxDownload">Export pixel art</button><div class="dim">Upload any image — it never leaves your browser.</div>`;
     wirePixelArt();
   } else if (cat === "slicer") {
     const sl = slState();
     box.innerHTML = `
-      <div class="field-label">Sprite slicer <span class="dim">(100% offline)</span></div><div class="row"><button type="button" class="btn-ghost" id="slPick" style="text-align:center">Upload sheet</button><input type="file" id="slFile" accept="image/*" hidden></div><div class="field-label">Mode</div><div class="seg" id="slModeSeg"><button type="button" class="seg-btn${sl.mode === "grid" ? " active" : ""}" data-mode="grid">Grid</button><button type="button" class="seg-btn${sl.mode === "auto" ? " active" : ""}" data-mode="auto">Auto-detect</button></div><div id="slGridRow"${sl.mode === "grid" ? "" : " hidden"}><div class="sl-row"><span class="dim">rows</span><input type="range" id="slRows" min="1" max="32" value="${sl.rows}" aria-label="grid rows"><span class="sl-val" id="slRowsVal">${sl.rows}</span></div><div class="sl-row"><span class="dim">cols</span><input type="range" id="slCols" min="1" max="32" value="${sl.cols}" aria-label="grid columns"><span class="sl-val" id="slColsVal">${sl.cols}</span></div><div class="sl-grid4"><label>margin<input type="number" class="num" id="slMargin" min="0" max="200" value="${sl.margin}"></label><label>padding<input type="number" class="num" id="slPad" min="0" max="200" value="${sl.pad}"></label><label>offset x<input type="number" class="num" id="slOx" min="0" max="500" value="${sl.ox}"></label><label>offset y<input type="number" class="num" id="slOy" min="0" max="500" value="${sl.oy}"></label></div></div><div class="sl-readout" id="slReadout">upload a sheet to start</div><div class="field-label">Background <span class="dim">(treated as empty)</span></div><div class="seg cols4" id="slBgSeg">
+      <div class="field-label">Sprite Slicer <span class="dim">(100% offline)</span></div><div class="row"><button type="button" class="btn-ghost" id="slPick" style="text-align:center">Upload sheet</button><input type="file" id="slFile" accept="image/*" hidden></div><div class="field-label">Mode</div><div class="seg" id="slModeSeg"><button type="button" class="seg-btn${sl.mode === "grid" ? " active" : ""}" data-mode="grid">Grid</button><button type="button" class="seg-btn${sl.mode === "auto" ? " active" : ""}" data-mode="auto">Auto-detect</button></div><div id="slGridRow"${sl.mode === "grid" ? "" : " hidden"}><div class="sl-row"><span class="dim">rows</span><input type="range" id="slRows" min="1" max="32" value="${sl.rows}" aria-label="grid rows"><span class="sl-val" id="slRowsVal">${sl.rows}</span></div><div class="sl-row"><span class="dim">cols</span><input type="range" id="slCols" min="1" max="32" value="${sl.cols}" aria-label="grid columns"><span class="sl-val" id="slColsVal">${sl.cols}</span></div><div class="sl-grid4"><label>margin<input type="number" class="num" id="slMargin" min="0" max="200" value="${sl.margin}"></label><label>padding<input type="number" class="num" id="slPad" min="0" max="200" value="${sl.pad}"></label><label>offset x<input type="number" class="num" id="slOx" min="0" max="500" value="${sl.ox}"></label><label>offset y<input type="number" class="num" id="slOy" min="0" max="500" value="${sl.oy}"></label></div></div><div class="sl-readout" id="slReadout">Upload a sheet to start</div><div class="field-label">Background <span class="dim">(treated as empty)</span></div><div class="seg cols4" id="slBgSeg">
         ${[["transparent", "Alpha"], ["black", "Black"], ["white", "White"], ["chroma", "Key"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === sl.bg ? " active" : ""}" data-bg="${v}">${lbl}</button>`).join("")}
       </div><label class="knock-row"><input type="checkbox" id="slKnockout"${sl.knockout ? " checked" : ""}> Knockout bg &rarr; transparent</label><div class="sl-pick-row"><button type="button" class="btn-ghost" id="slSelectAll">Select all</button><button type="button" class="btn-ghost" id="slClear">Clear</button><button type="button" class="btn-ghost" id="slReslice">Re-slice</button></div><div class="sl-hint">Click pieces in order &mdash; 1st = frame 1. Empty cells flagged.</div><div class="field-label">Playback</div><div class="row"><span class="dim">fps</span><select id="slFps">${[6, 8, 12, 24].map(f => `<option value="${f}"${f === sl.fps ? " selected" : ""}>${f} fps</option>`).join("")}</select></div><div class="seg" id="slPlaybackSeg" style="margin-top:8px">
         ${[["loop", "Loop"], ["once", "Once"], ["pingpong", "Ping-pong"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === sl.playback ? " active" : ""}" data-playback="${v}">${lbl}</button>`).join("")}
-      </div><button type="button" class="btn-ghost sl-download" id="slDownload" disabled>Download animation <span class="dim">PNG + JSON</span></button><button type="button" class="btn-ghost sl-download" id="slCells" disabled>Download cells <span class="dim">individual PNGs</span></button><div class="dim">100% offline.</div>`;
+      </div><button type="button" class="btn-ghost sl-download" id="slDownload" disabled>Export animation <span class="dim">PNG + JSON</span></button><button type="button" class="btn-ghost sl-download" id="slCells" disabled>Export cells <span class="dim">individual PNGs</span></button><div class="dim">100% offline.</div>`;
     wireSlicer();
   } else if (cat === "draglab") {
     const D = dlState();
@@ -217,7 +229,7 @@ function renderParams() {
         <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="dlBrushUndo">Undo stroke</button><button type="button" class="btn-ghost" id="dlResetB">Reset</button></div>
         <div class="dim" style="margin-top:8px">Paint straight on the photo: push it along, pinch it in, bloat it out, twirl it round. Points and brush work stack — switch modes freely.</div>
       </div>
-      <button type="button" class="btn-ghost dl-download" id="dlExport">Export PNG</button>`;
+      <button type="button" class="btn-ghost dl-download" id="dlExport" disabled>Export PNG</button>`;
     wireDraglab();
   } else if (cat === "cutout") {
     const co = coState();
@@ -229,7 +241,7 @@ function renderParams() {
       <div class="field-label">Edge cleanup <span class="dim">(live — no re-run)</span></div>
       <div class="sl-row"><span class="dim">cut</span><input type="range" id="coThreshold" min="0" max="100" value="${co.threshold}" aria-label="background cut threshold"><span class="sl-val" id="coThresholdVal">${co.threshold}</span></div>
       <div class="sl-row"><span class="dim">feather</span><input type="range" id="coFeather" min="0" max="24" value="${co.feather}" aria-label="edge feather"><span class="sl-val" id="coFeatherVal">${co.feather}px</span></div>
-      <button type="button" class="btn-ghost co-download" id="coExport">Export PNG</button>
+      <button type="button" class="btn-ghost co-download" id="coExport" disabled>Export PNG</button>
       <div class="dim" style="margin-top:8px">Model: U-2-Net (u2netp) via the rembg project — Apache-2.0. Runs on your GPU when it can, CPU otherwise.</div>`;
     wireCutout();
   } else if (cat === "upscale") {
@@ -249,7 +261,7 @@ function renderParams() {
         <button type="button" class="btn-ghost up-download" id="upPxApply">Enlarge</button>
         <div class="dim" style="margin-top:8px">Pixel mode is instant and 100% offline — no model. EPX works at &times;2 and &times;4.</div>
       </div>
-      <button type="button" class="btn-ghost up-download" id="upExport">Export PNG</button>
+      <button type="button" class="btn-ghost up-download" id="upExport" disabled>Export PNG</button>
       <div class="dim" style="margin-top:8px">Model: Real-ESRGAN (realesr-general-x4v3) — BSD-3-Clause. Runs on your GPU when it can, CPU otherwise.</div>`;
     wireUpscale();
   } else if (cat === "atlas") {
@@ -265,7 +277,7 @@ function renderParams() {
       <button type="button" class="btn-ghost at-download" id="atPack">Pack</button>
       <div class="field-label">Manifest format</div>
       <div class="row"><select id="atFormat" class="grow"><option value="json"${at.format === "json" ? " selected" : ""}>JSON — TexturePacker hash</option><option value="unity"${at.format === "unity" ? " selected" : ""}>Unity — .tpsheet</option><option value="godot"${at.format === "godot" ? " selected" : ""}>Godot — .tpsheet</option></select></div>
-      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="atExportPng">Export PNG</button><button type="button" class="btn-ghost" id="atExportManifest">Export manifest</button></div>
+      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="atExportPng" disabled>Export PNG</button><button type="button" class="btn-ghost" id="atExportManifest" disabled>Export manifest</button></div>
       <div class="dim" style="margin-top:8px">Identical frames are packed once and listed under every name in the manifest.</div>`;
     wireAtlas();
   } else if (cat === "normalmap") {
@@ -285,7 +297,7 @@ function renderParams() {
       <label class="chk"><input type="checkbox" id="nmWrap"${N.wrap ? " checked" : ""}> wrap edges <span class="dim">(tileable textures stay seamless)</span></label>
       <div class="field-label">Green channel</div>
       <div class="seg" id="nmFlipSeg" style="grid-template-columns:repeat(2,minmax(0,1fr))"><button type="button" class="seg-btn${N.flipY ? "" : " active"}" data-nmflip="gl">OpenGL (Y+)</button><button type="button" class="seg-btn${N.flipY ? " active" : ""}" data-nmflip="dx">DirectX (Y&minus;)</button></div>
-      <button type="button" class="btn-ghost nm-download" id="nmExport">Export PNG</button>
+      <button type="button" class="btn-ghost nm-download" id="nmExport" disabled>Export PNG</button>
       <div class="dim" style="margin-top:8px">Unity and Godot both read the normal map directly; pick DirectX (Y&minus;) if your lighting looks upside-down.</div>`;
     wireNormalmap();
   } else if (cat === "tiler") {
@@ -299,7 +311,7 @@ function renderParams() {
         ${[["single", "Single"], ["offset", "Offset"], ["grid", "3\u00D73"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === T.view ? " active" : ""}" data-tlview="${v}">${lbl}</button>`).join("")}
       </div>
       <div class="sl-row"><span class="dim">heal</span><input type="range" id="tlStrength" min="0" max="100" value="${T.strength}" aria-label="seam heal strength"><span class="sl-val" id="tlStrengthVal">${T.strength}%</span></div>
-      <button type="button" class="btn-ghost tl-download" id="tlExport">Export PNG</button>
+      <button type="button" class="btn-ghost tl-download" id="tlExport" disabled>Export PNG</button>
       <div class="dim" style="margin-top:8px">Offset shifts the texture by half, so the seams land in the middle where you can see them. Heal blends the edges together until the 3&times;3 preview repeats clean. Export is the healed texture at full size.</div>`;
     wireTiler();
   } else if (cat === "palette") {
@@ -316,8 +328,8 @@ function renderParams() {
       <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="plUndo">Undo</button></div>
       <div class="field-label">Variants <span class="dim">(palette hue spins)</span></div>
       <div class="pl-variants" id="plVariants"><span class="dim">load a sprite first</span></div>
-      <button type="button" class="btn-ghost pl-download" id="plExport">Export PNG</button>
-      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="plGpl">Palette .gpl</button><button type="button" class="btn-ghost" id="plJson">Palette .json</button></div>
+      <button type="button" class="btn-ghost pl-download" id="plExport" disabled>Export PNG</button>
+      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="plGpl" disabled>Palette .gpl</button><button type="button" class="btn-ghost" id="plJson" disabled>Palette .json</button></div>
       <div class="dim" style="margin-top:8px">Transparent pixels are never touched. Tolerance feathers the swap at the edges, so anti-aliased outlines don't fringe.</div>`;
     wirePalette();
   } else if (cat === "gif") {
@@ -329,8 +341,8 @@ function renderParams() {
       <div class="field-label">Sheet layout</div>
       <div class="row"><label class="dim"><input type="checkbox" id="gfAuto" ${G.autoCols ? "checked" : ""}> auto columns</label><span class="dim">columns</span><input type="number" class="num" id="gfCols" min="1" max="64" value="${G.cols}" ${G.autoCols ? "disabled" : ""}></div>
       <div class="dim" style="margin-top:4px">Auto lays the frames out near-square. The JSON export carries every frame's rect and duration in ms, ready for an engine.</div>
-      <button type="button" class="btn-ghost gf-download" id="gfExport">Export sheet PNG</button>
-      <button type="button" class="btn-ghost" id="gfJson" style="width:100%;margin-top:8px;text-align:center">Export JSON manifest</button>`;
+      <button type="button" class="btn-ghost gf-download" id="gfExport" disabled>Export PNG</button>
+      <button type="button" class="btn-ghost" id="gfJson" style="width:100%;margin-top:8px;text-align:center" disabled>Export JSON manifest</button>`;
     wireGif();
   } else {
     box.innerHTML = `
@@ -840,8 +852,23 @@ async function aiGenerateImage(prompt, w, h, onStatus) {
   if (aiKeyFor("pol-flux")) chain.splice(2, 0, "pol-flux");
   let lastErr = null;
   let fluxDetour = false;
+  mpHealth(); /* warm the health cache — the skip below only ever reads
+   * data that is already fresh; it never waits on this fetch */
   for (let i = 0; i < chain.length; i++) {
     const mid = chain[i];
+    /* a Horde model with zero workers online cannot answer at all —
+     * when fresh health data says so, skip it up front instead of
+     * burning a queue wait on it */
+    const hp = AI_PROVIDERS[mid];
+    const hh = hp && hp.hordeModel ? mpCachedHealth(hp.hordeModel) : null;
+    if (hh && hh.workers === 0) {
+      lastErr = new Error(AI_MODEL_NAMES[mid] + " has no workers online right now");
+      if (chain[i + 1]) {
+        onStatus(`auto: ${AI_MODEL_NAMES[mid]} has no workers online — skipping to ${AI_MODEL_NAMES[chain[i + 1]]}…`);
+        setStatusBar("warn");
+      }
+      continue;
+    }
     try {
       if (i > 0) onStatus(`auto: switched to ${AI_MODEL_NAMES[mid]}`);
       return await aiGenerateWith(mid, prompt, w, h, onStatus);
@@ -881,6 +908,75 @@ async function aiGenerateImage(prompt, w, h, onStatus) {
  * listener (state save, key row, notes, 3D description) keeps working.
  * The popup is portaled to <body>: position:fixed inside the wizard's
  * animated ancestors would render offset. */
+/* ===== Horde health board + favourite models (HUB roadmap Phase 5) =====
+ * Health: GET https://aihorde.net/api/v2/status/models is public and
+ * keyless — one entry per model: {name, count (workers online), queued,
+ * eta (average wait, seconds)}. Cached for 60s; the model popup kicks a
+ * refresh when it opens and re-renders its rows when data lands. No data
+ * (or a failed fetch) renders nothing extra — the board never invents
+ * numbers. Rows join to providers through AI_PROVIDERS[id].hordeModel. */
+const MP_HEALTH = { at: 0, map: null, pending: false };
+const MP_HEALTH_TTL = 60 * 1000;
+function mpHealthMapFrom(list) {
+  const map = {};
+  if (!Array.isArray(list)) return map;
+  list.forEach((m) => {
+    if (!m || typeof m.name !== "string") return;
+    map[m.name] = {
+      workers: typeof m.count === "number" ? m.count : 0,
+      eta: typeof m.eta === "number" ? m.eta : 0
+    };
+  });
+  return map;
+}
+function mpCachedHealth(hordeModel) {
+  if (!MP_HEALTH.map || Date.now() - MP_HEALTH.at > MP_HEALTH_TTL) return null;
+  return MP_HEALTH.map[hordeModel] || null;
+}
+let mpRerender = null; // wireModelPicker sets this while its popup is open
+function mpHealth() {
+  if (MP_HEALTH.pending) return;
+  if (MP_HEALTH.map && Date.now() - MP_HEALTH.at <= MP_HEALTH_TTL) return;
+  MP_HEALTH.pending = true;
+  fetch("https://aihorde.net/api/v2/status/models")
+    .then((r) => { if (!r.ok) throw new Error("health HTTP " + r.status); return r.json(); })
+    .then((list) => {
+      MP_HEALTH.map = mpHealthMapFrom(list);
+      MP_HEALTH.at = Date.now();
+      if (mpOpenFor && mpRerender) mpRerender();
+    })
+    .catch(() => { MP_HEALTH.at = Date.now(); /* stay silent — the next open after the TTL retries */ })
+    .finally(() => { MP_HEALTH.pending = false; });
+}
+
+/* Favourites: pinned provider ids, shared by both pickers (they render
+ * through the same popup). Stored as a JSON array of ids in localStorage
+ * under "m4ster.aiFavs"; every read is defensive, like the rest of the
+ * file's storage reads. */
+const AI_FAVS_KEY = "m4ster.aiFavs";
+function aiFavsParse(json) {
+  try {
+    const v = JSON.parse(json || "[]");
+    if (!Array.isArray(v)) return [];
+    return v.filter((x) => typeof x === "string");
+  } catch (e) { return []; }
+}
+function aiFavsToggleIn(favs, id) {
+  const out = favs.slice();
+  const i = out.indexOf(id);
+  if (i >= 0) out.splice(i, 1); else out.push(id);
+  return out;
+}
+function aiFavsLoad() {
+  try { return aiFavsParse(localStorage.getItem(AI_FAVS_KEY)); }
+  catch (e) { return []; }
+}
+function aiFavsToggle(id) {
+  const next = aiFavsToggleIn(aiFavsLoad(), id);
+  try { localStorage.setItem(AI_FAVS_KEY, JSON.stringify(next)); } catch (e) {}
+  return next;
+}
+
 function mpParseOption(opt, groupLabel) {
   const raw = opt.textContent.trim().replace(/^⚡\s*/, "");
   const parts = raw.split(" — ");
@@ -897,7 +993,12 @@ function mpParseOption(opt, groupLabel) {
   else if (opt.value === "auto") chip = "AUTO";
   else if (/free key/i.test(groupLabel || "")) chip = "FREE KEY";
   else if (tm) chip = "~" + tm[1];
-  return { value: opt.value, name: name, source: source, desc: desc, chip: chip };
+  /* live Horde health rides along when fresh data exists — 3D provider
+   * ids are not in AI_PROVIDERS, so their rows get null and render
+   * exactly as before */
+  const hprov = AI_PROVIDERS[opt.value];
+  const health = hprov && hprov.hordeModel ? mpCachedHealth(hprov.hordeModel) : null;
+  return { value: opt.value, name: name, source: source, desc: desc, chip: chip, health: health };
 }
 function mpSections(sel) {
   const secs = [];
@@ -913,6 +1014,18 @@ function mpSections(sel) {
       pushOpt(child.value === "auto" ? "Auto" : "Models", child);
     }
   });
+  /* pinned models get a Favourites section at the top — the same rows
+   * also stay in their normal sections below */
+  const favs = aiFavsLoad();
+  if (favs.length) {
+    const favRows = [];
+    favs.forEach((id) => {
+      let found = null;
+      Array.prototype.forEach.call(sel.options, (opt) => { if (opt.value === id) found = opt; });
+      if (found) favRows.push(mpParseOption(found, ""));
+    });
+    if (favRows.length) secs.unshift({ label: "★ Favourites", rows: favRows });
+  }
   return secs;
 }
 let mpOpenFor = null; // { btn, sel } while the popup is open
@@ -921,6 +1034,7 @@ function mpClose() {
   if (pop) pop.hidden = true;
   if (mpOpenFor) mpOpenFor.btn.setAttribute("aria-expanded", "false");
   mpOpenFor = null;
+  mpRerender = null;
 }
 /* ===== My Assets — Meshy copy (TEST build) =====
  * Meshy's Assets page: search, All / Images / Models / Animation
@@ -1115,52 +1229,84 @@ function wireModelPicker(btnId, selId) {
     const list = pop.querySelector(".mp-list");
     const titleEl = pop.querySelector(".mp-title");
     if (titleEl) titleEl.textContent = btn.getAttribute("data-mp-title") || "Model Preference";
-    list.innerHTML = "";
-    mpSections(sel).forEach((sec) => {
-      const h = document.createElement("div");
-      h.className = "mp-sec";
-      h.textContent = sec.label;
-      list.appendChild(h);
-      sec.rows.forEach((r) => {
-        const row = document.createElement("button");
-        row.type = "button";
-        row.className = "mp-row" + (r.value === sel.value ? " sel" : "");
-        const ic = document.createElement("span");
-        ic.className = "mp-ic";
-        ic.textContent = r.value === "auto" ? "⚡" : r.source.indexOf("Horde") >= 0 ? "◆" : r.chip === "FREE KEY" ? "●" : "▲";
-        const main = document.createElement("span");
-        main.className = "mp-main";
-        const nm = document.createElement("span");
-        nm.className = "mp-rname";
-        nm.textContent = (r.source ? r.source + " · " : "") + r.name;
-        if (r.chip) {
-          const ch = document.createElement("span");
-          ch.className = "mp-rchip";
-          ch.textContent = r.chip;
-          nm.appendChild(ch);
-        }
-        main.appendChild(nm);
-        if (r.desc) {
-          const ds = document.createElement("span");
-          ds.className = "mp-rdesc";
-          ds.textContent = r.desc;
-          main.appendChild(ds);
-        }
-        const ck = document.createElement("span");
-        ck.className = "mp-check";
-        ck.textContent = r.value === sel.value ? "✓" : "";
-        row.appendChild(ic);
-        row.appendChild(main);
-        row.appendChild(ck);
-        row.addEventListener("click", () => {
-          sel.value = r.value;
-          sel.dispatchEvent(new Event("change", { bubbles: true }));
-          refreshTrigger();
-          mpClose();
+    const renderList = () => {
+      const favs = aiFavsLoad();
+      list.innerHTML = "";
+      mpSections(sel).forEach((sec) => {
+        const h = document.createElement("div");
+        h.className = "mp-sec";
+        h.textContent = sec.label;
+        list.appendChild(h);
+        sec.rows.forEach((r) => {
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "mp-row" + (r.value === sel.value ? " sel" : "");
+          const ic = document.createElement("span");
+          ic.className = "mp-ic";
+          ic.textContent = r.value === "auto" ? "⚡" : r.source.indexOf("Horde") >= 0 ? "◆" : r.chip === "FREE KEY" ? "●" : "▲";
+          const main = document.createElement("span");
+          main.className = "mp-main";
+          const nm = document.createElement("span");
+          nm.className = "mp-rname";
+          nm.textContent = (r.source ? r.source + " · " : "") + r.name;
+          if (r.chip) {
+            const ch = document.createElement("span");
+            ch.className = "mp-rchip";
+            ch.textContent = r.chip;
+            nm.appendChild(ch);
+          }
+          if (r.health) {
+            const hs = document.createElement("span");
+            hs.className = "mp-health";
+            const dot = document.createElement("span");
+            dot.className = "mp-dot " + (r.health.workers >= 3 ? "ok" : r.health.workers >= 1 ? "warn" : "off");
+            hs.appendChild(dot);
+            const htx = document.createElement("span");
+            htx.textContent = (r.health.workers === 1 ? "1 worker" : r.health.workers + " workers") +
+              " · " + (r.health.eta > 0 ? "~" + Math.round(r.health.eta) + "s wait" : "ready now");
+            hs.appendChild(htx);
+            nm.appendChild(hs);
+          }
+          main.appendChild(nm);
+          if (r.desc) {
+            const ds = document.createElement("span");
+            ds.className = "mp-rdesc";
+            ds.textContent = r.desc;
+            main.appendChild(ds);
+          }
+          const star = document.createElement("span");
+          const pinned = favs.indexOf(r.value) >= 0;
+          star.className = "mp-star" + (pinned ? " on" : "");
+          star.textContent = pinned ? "★" : "☆";
+          star.setAttribute("role", "button");
+          star.setAttribute("aria-pressed", String(pinned));
+          star.setAttribute("aria-label", pinned ? "Unpin " + r.name + " from favourites" : "Pin " + r.name + " to favourites");
+          star.title = pinned ? "Unpin from favourites" : "Pin to favourites";
+          star.addEventListener("click", (ev) => {
+            ev.stopPropagation(); /* a pin is not a pick: no select, no close */
+            aiFavsToggle(r.value);
+            renderList();
+          });
+          const ck = document.createElement("span");
+          ck.className = "mp-check";
+          ck.textContent = r.value === sel.value ? "✓" : "";
+          row.appendChild(ic);
+          row.appendChild(main);
+          row.appendChild(star);
+          row.appendChild(ck);
+          row.addEventListener("click", () => {
+            sel.value = r.value;
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+            refreshTrigger();
+            mpClose();
+          });
+          list.appendChild(row);
         });
-        list.appendChild(row);
       });
-    });
+    };
+    renderList();
+    mpRerender = renderList;
+    mpHealth(); /* opening the popup refreshes the health board; fresh data re-renders the rows */
     pop.hidden = false;
     mpOpenFor = { btn: btn, sel: sel };
     btn.setAttribute("aria-expanded", "true");
@@ -1655,7 +1801,11 @@ function showRetry(msg) {
 
 function setBusy(b) {
   state.busy = b;
-  document.querySelectorAll(".generate").forEach(x => { x.disabled = b; });
+  document.querySelectorAll(".generate").forEach(x => {
+    x.disabled = b;
+    if (x.dataset.label === undefined) x.dataset.label = x.textContent;
+    x.textContent = b ? "GENERATING…" : x.dataset.label;
+  });
 }
 
 /* ---------------- atlas packing + manifest ----------------
@@ -1778,9 +1928,29 @@ function moveFrame(ri, oi, dir) {
 
 let previewRAF = 0, previewRow = 0, previewT = 0;
 
+/* perf: both preview loops draw into the same #preview canvas. An
+ * IntersectionObserver parks whichever loop is live while the canvas is
+ * covered by another mode or scrolled off-screen, and resumes it when it
+ * comes back — the drawn frames themselves are unchanged. previewGen
+ * keeps a parked loop's resume from reviving after the other loop (or a
+ * restart of the same one) has taken over the canvas. */
+let previewVisible = true, previewResume = null, previewGen = 0, previewWatching = false;
+function watchPreviewCanvas(pc) {
+  if (previewWatching || !pc || !("IntersectionObserver" in window)) return;
+  previewWatching = true;
+  new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      previewVisible = e.isIntersecting;
+      if (previewVisible && previewResume) { const r = previewResume; previewResume = null; r(); }
+    }
+  }).observe(pc);
+}
+
 function startPreview() {
   cancelAnimationFrame(previewRAF);
   cancelAnimationFrame(slicerRAF);
+  const pvGen = ++previewGen;
+  previewResume = null;
   const sel = $("#previewState");
   sel.innerHTML = "";
   sel.disabled = false;
@@ -1796,13 +1966,22 @@ function startPreview() {
   const pc = $("#preview");
   const pctx = pc.getContext("2d");
   pctx.imageSmoothingEnabled = false;
+  /* perf: element refs resolved once per loop instead of DOM queries on
+   * every tick */
+  const fpsEl = $("#previewFps"), metaEl = $("#previewMeta");
+  watchPreviewCanvas(pc);
   let last = performance.now();
 
   function tick(now) {
+    if (!previewVisible) {   // covered / off-screen: park until the observer resumes us
+      previewRAF = 0;
+      previewResume = () => { if (pvGen === previewGen) tick(performance.now()); };
+      return;
+    }
     previewRAF = requestAnimationFrame(tick);
     const r = state.rows[previewRow];
     if (!r) return;
-    const fps = +$("#previewFps").value || 8;
+    const fps = +fpsEl.value || 8;
     if (now - last < 1000 / fps) return;
     last = now;
     previewT = (previewT + 1) % r.order.length;
@@ -1818,7 +1997,7 @@ function startPreview() {
       for (let iy = 0; iy < 3; iy++)
         for (let ix = 0; ix < 3; ix++)
           pctx.drawImage(f, ox + ix * dw, oy + iy * dh, dw, dh);
-      $("#previewMeta").textContent = `· ${r.name} · 3×3 tile check`;
+      metaEl.textContent = `· ${r.name} · 3×3 tile check`;
     } else {
       const s = Math.min(pc.width / f.width, pc.height / f.height, 8);
       const dw = Math.max(1, Math.round(f.width * s)), dh = Math.max(1, Math.round(f.height * s));
@@ -1826,7 +2005,7 @@ function startPreview() {
       if (state.flipX) { pctx.translate(pc.width, 0); pctx.scale(-1, 1); }
       pctx.drawImage(f, (pc.width - dw) / 2, (pc.height - dh) / 2, dw, dh);
       pctx.restore();
-      $("#previewMeta").textContent = `· ${r.name} · frame ${previewT + 1}/${r.order.length}`;
+      metaEl.textContent = `· ${r.name} · frame ${previewT + 1}/${r.order.length}`;
     }
   }
   tick(last);
@@ -1863,9 +2042,9 @@ function wireExport() {
     setTimeout(() => downloadJSON(state.atlas.manifest, state.atlas.jsonName || "m4ster-sprite-atlas.json"), 400);
   };
   const godotBtn = $("#dlGodot");
-  if (godotBtn) godotBtn.onclick = () => { downloadGodotPack().catch(e => stageMsg("Godot export failed: " + e.message, true)); };
+  if (godotBtn) godotBtn.onclick = () => { downloadGodotPack().catch(e => stageMsg("Godot export failed: " + humanErr(e), true)); };
   const unityBtn = $("#dlUnity");
-  if (unityBtn) unityBtn.onclick = () => { downloadUnityPack().catch(e => stageMsg("Unity export failed: " + e.message, true)); };
+  if (unityBtn) unityBtn.onclick = () => { downloadUnityPack().catch(e => stageMsg("Unity export failed: " + humanErr(e), true)); };
   $("#dlFrames").onclick = () => {
     if (state.slicer && state.slicer.selection.length) {
       // slicer: export the picked frames in order
@@ -2323,6 +2502,101 @@ Use it:
 Why a builder script? Raw .anim files reference sprites by internal IDs
 that only Unity can assign. The script resolves sprites by name inside
 the editor, so clips can never arrive with "Missing (Sprite)".
+`;
+
+const MESH_README = `m4ster FrameLab — mesh import guide
+====================================
+
+What you downloaded
+-------------------
+Your mesh comes out of the 3D studio as a GLB (glTF binary) — one file
+with the geometry, materials and textures embedded. From the viewer you
+can also re-export the loaded mesh as OBJ or FBX:
+
+- GLB   the full package. Textures travel inside the file. This is the
+        one to keep and the one every engine below reads directly.
+- OBJ   geometry-first: vertices, normals, UVs. No embedded textures —
+        treat it as the shape, and texture it in your engine.
+- FBX   geometry + vertex color, re-exported from the loaded mesh.
+        Handy for tools that prefer FBX; for textures, GLB still wins.
+
+Start from the GLB unless a tool in your pipeline insists otherwise.
+
+Unity (2022.2 or newer)
+-----------------------
+1. Drag the .glb straight into your project's Assets folder — Unity
+   imports glTF natively and builds the materials for you.
+2. Drag the imported model into the scene.
+3. If it arrives huge or tiny, select the import in the Project view
+   and set its scale on the Model tab, or scale the scene object —
+   generated meshes do not share one fixed real-world size.
+Older Unity versions: import a free glTF importer package, or open the
+GLB in Blender and export FBX.
+
+Unreal Engine
+-------------
+1. In the Content Browser: Import, and pick the .glb. The built-in
+   glTF importer brings geometry and PBR materials across.
+2. Leave "Import Uniform Scale" at 1 first and check the mesh in the
+   viewport; adjust the scale on the import dialog or the actor if the
+   proportions look off against your level.
+3. Textures land as regular Texture2D assets next to the mesh.
+
+Godot 4
+-------
+1. Copy the .glb into your project folder (in the FileSystem dock or
+   on disk). Godot imports it automatically as a scene.
+2. Drag the imported scene into your tree — it arrives as a node with
+   the mesh and materials ready.
+3. Rescale the node if needed; Godot's unit is the metre, generated
+   meshes are not guaranteed to be true to it.
+
+Blender
+-------
+1. File > Import > glTF 2.0 (.glb/.gltf), pick the file.
+2. Geometry, materials and textures come across intact — the cleanest
+   place to clean up, retopologise or re-export to anything else
+   (FBX for older engines, for example).
+
+Scale and orientation
+---------------------
+glTF is Y-up and right-handed, and every engine above converts on
+import, so the model should stand upright with no work from you. Two
+things genuinely vary between generated meshes:
+
+- Absolute size. One model's "1 unit" is not another's. Check the
+  bounding box against a known reference (a 2 m doorway, a character)
+  and set the import scale once.
+- Pivot. The origin sits wherever the generator centred the shape,
+  usually the middle of the model. If a game object needs its feet on
+  the ground, offset it in the engine or move the origin in Blender.
+
+Textures
+--------
+GLB carries its PBR textures inside the file — base color, and where
+the model produced them, normal / roughness / metallic maps. They
+import with the mesh everywhere above; there is nothing to relink.
+
+One exception: meshes made by Hunyuan3D-2 Mini Turbo (including the
+direct Text to 3D route) are SHAPE ONLY. That provider builds geometry
+with no texture stage, so the mesh arrives as a plain surface in a
+neutral material. That is expected, not a broken export — assign your
+own materials, or vertex-paint it, and it is game-ready.
+
+Troubleshooting
+---------------
+- Mesh imports but looks plain grey: it is a shape-only result (see
+  above) or the engine skipped material import — re-import the GLB and
+  keep the material options on.
+- Mesh is enormous or microscopic: import scale — see Scale above.
+- Mesh is dark or inside-out in the engine: open it in Blender, select
+  all faces in Edit Mode, Mesh > Normals > Recalculate Outside, then
+  re-export.
+- A tool refuses the GLB: open it in Blender (it reads every GLB) and
+  export FBX or OBJ from there.
+- Textures exist but look soft: the provider generated them at its own
+  fixed resolution — pick the Ultra 2K / 4K resolution in the studio
+  before generating when the model supports it.
 `;
 
 async function downloadGodotPack() {
@@ -3505,7 +3779,7 @@ async function runPipeline() {
       showRetry(msg);
       setStatusBar("warn");
     } else {
-      stageMsg("FAILED: " + e.message, true);
+      stageMsg("FAILED: " + humanErr(e), true);
       showRetry("Extraction found nothing usable. Retry with a stricter prompt, lower the frame count, or pick a different background key.");
       setStatusBar("error");
     }
@@ -3706,6 +3980,20 @@ function syncToolChrome() {
   if (back) back.hidden = !tool;
 }
 
+/* the pixel side panel shows whenever the Pixel Converter lane is
+ * open: the two figures once an image is loaded, a hint line until
+ * then (the same empty-state pattern the Slicer readout uses) */
+function pxSyncSide() {
+  const side = $("#pixelSide");
+  if (!side) return;
+  const on = state.category === "pixelart";
+  const has = !!(state.pixelart && state.pixelart.src);
+  side.hidden = !on;
+  side.querySelectorAll(".px-fig").forEach(f => { f.hidden = !has; });
+  const e = $("#pxEmpty");
+  if (e) e.hidden = has;
+}
+
 function syncPixelMode() {
   const on = state.category === "pixelart";
   const aside = document.querySelector("aside.controls");
@@ -3713,15 +4001,13 @@ function syncPixelMode() {
   if (aside) aside.classList.toggle("mode-pixelart", on);
   if (stage) stage.classList.toggle("mode-pixelart", on);
   document.body.classList.toggle("mode-pixelart", on);
-  const side = $("#pixelSide");
-  if (side) side.hidden = !(on && state.pixelart && state.pixelart.src);
+  pxSyncSide();
   syncToolChrome();
 }
 
 function pxRender() {
   const P = pxState();
-  const side = $("#pixelSide");
-  if (!P.src) { if (side) side.hidden = true; return; }
+  if (!P.src) { pxSyncSide(); return; }
   const t0 = performance.now();
   P.out = pxConvert(P.src, { w: P.w, h: P.h, colors: P.colors, dither: P.dither });
   const ms = Math.round(performance.now() - t0);
@@ -3755,7 +4041,7 @@ function pxRender() {
 
   $("#pxOrigCap").textContent = `original · ${P.imgW} × ${P.imgH}`;
   $("#pxOutCap").textContent = `pixel art · ${P.w} × ${P.h} · ${pxColorLabel(P.colors)}${P.dither ? " · dithered" : ""}${tileInfo} · ${ms}ms`;
-  side.hidden = false;
+  pxSyncSide();
 }
 
 function pxDownloadArt() {
@@ -4162,6 +4448,8 @@ let slicerRAF = 0, slicerT = 0, slicerDir = 1;
 function slicerPreview() {
   cancelAnimationFrame(slicerRAF);
   cancelAnimationFrame(previewRAF);
+  const pvGen = ++previewGen;
+  previewResume = null;
   const S = state.slicer;
   const pc = $("#preview");
   if (!pc) return;
@@ -4179,10 +4467,33 @@ function slicerPreview() {
     $("#previewMeta").textContent = (S && S.sheet) ? "· pick frames above" : "";
     return;
   }
+  const metaEl = $("#previewMeta");
+  watchPreviewCanvas(pc);
+  /* perf: the frame array + max dims used to be rebuilt on EVERY rAF
+   * tick (60x/sec to draw at 8fps). They only change when the selection
+   * or the sliced pieces change, so cache them behind a cheap signature
+   * check; fps/playback are plain fields and still read live each tick. */
+  let cacheFr = null, cacheCw = 0, cacheCh = 0, cacheSel = null, cachePieces = null;
+  function slicerFrames() {
+    const selNow = S.selection;
+    if (cacheFr && cachePieces === S.pieces && cacheSel.length === selNow.length
+        && cacheSel.every((v, i) => v === selNow[i])) return cacheFr;
+    cacheFr = selNow.map(j => S.pieces[j].canvas);
+    cacheSel = selNow.slice();
+    cachePieces = S.pieces;
+    cacheCw = 0; cacheCh = 0;
+    for (const f of cacheFr) { cacheCw = Math.max(cacheCw, f.width); cacheCh = Math.max(cacheCh, f.height); }
+    return cacheFr;
+  }
   let last = performance.now();
   function tick(now) {
+    if (!previewVisible) {   // covered / off-screen: park until the observer resumes us
+      slicerRAF = 0;
+      previewResume = () => { if (pvGen === previewGen) tick(performance.now()); };
+      return;
+    }
     slicerRAF = requestAnimationFrame(tick);
-    const fr = S.selection.map(j => S.pieces[j].canvas);
+    const fr = slicerFrames();
     if (!fr.length) return;
     const fps = S.fps || 8;
     if (now - last < 1000 / fps) return;
@@ -4194,8 +4505,7 @@ function slicerPreview() {
       if (slicerT <= 0) { slicerT = 0; slicerDir = 1; }
     }
     else slicerT = (slicerT + 1) % fr.length;
-    let cw = 0, ch = 0;
-    for (const f of fr) { cw = Math.max(cw, f.width); ch = Math.max(ch, f.height); }
+    const cw = cacheCw, ch = cacheCh;
     const sc = Math.min(pc.width / cw, pc.height / ch, 8);
     const dw = Math.max(1, Math.round(cw * sc)), dh = Math.max(1, Math.round(ch * sc));
     const ox = (pc.width - dw) / 2, oy = (pc.height - dh) / 2;
@@ -4203,7 +4513,7 @@ function slicerPreview() {
     const f = fr[slicerT];
     const fw = Math.max(1, Math.round(f.width * sc)), fh = Math.max(1, Math.round(f.height * sc));
     pctx.drawImage(f, ox + Math.round((dw - fw) / 2), oy + dh - fh, fw, fh);
-    $("#previewMeta").textContent = `· slice · frame ${slicerT + 1}/${fr.length}`;
+    metaEl.textContent = `· slice · frame ${slicerT + 1}/${fr.length}`;
   }
   tick(last);
 }
@@ -4401,20 +4711,28 @@ function syncDraglabMode() {
  * Each point has a home (px, py) and a dragged-to spot (qx, qy); swapping
  * the two turns the forward deformation into a backward lookup, which is
  * what a renderer needs (no holes in the output). */
-function dlMapPoint(x, y, pts) {
+/* perf: the warp math below writes into caller-owned scratch arrays
+ * instead of allocating a fresh [x, y] (and weights array) per grid node
+ * — same arithmetic, same order, zero per-node garbage. */
+let _dlW = [];                 // MLS weights scratch, grown to fit the point count
+const _dlM = [0, 0];           // dlInvMap scratch: point-warp result
+const _dlO = [0, 0];           // dlInvMap scratch: brush offset
+
+function dlMapPoint(x, y, pts, out) {
   const n = pts.length;
-  if (n === 0) return [x, y];
+  if (n === 0) { out[0] = x; out[1] = y; return; }
   if (n === 1) {
     // a single point can only translate the whole picture
-    return [x + pts[0].px - pts[0].qx, y + pts[0].py - pts[0].qy];
+    out[0] = x + pts[0].px - pts[0].qx; out[1] = y + pts[0].py - pts[0].qy; return;
   }
   // weights: closer points pull harder (1 / distance^2)
-  const w = new Array(n);
+  if (_dlW.length < n) _dlW = new Array(n);
+  const w = _dlW;
   let wSum = 0, pCx = 0, pCy = 0, qCx = 0, qCy = 0;
   for (let i = 0; i < n; i++) {
     const dx = x - pts[i].qx, dy = y - pts[i].qy;
     const d2 = dx * dx + dy * dy;
-    if (d2 < 0.01) return [pts[i].px, pts[i].py]; // right on a point: exact home
+    if (d2 < 0.01) { out[0] = pts[i].px; out[1] = pts[i].py; return; } // right on a point: exact home
     w[i] = 1 / d2;
     wSum += w[i];
     pCx += w[i] * pts[i].px; pCy += w[i] * pts[i].py;
@@ -4431,10 +4749,10 @@ function dlMapPoint(x, y, pts) {
     a += w[i] * (qx * px + qy * py);
     b += w[i] * (qx * py - qy * px);
   }
-  if (mu < 1e-9) return [x + pCx - qCx, y + pCy - qCy]; // all points stacked: translate
+  if (mu < 1e-9) { out[0] = x + pCx - qCx; out[1] = y + pCy - qCy; return; } // all points stacked: translate
   a /= mu; b /= mu;
   const vx = x - qCx, vy = y - qCy;
-  return [pCx + a * vx - b * vy, pCy + b * vx + a * vy];
+  out[0] = pCx + a * vx - b * vy; out[1] = pCy + b * vx + a * vy;
 }
 
 /* bilinear sample of the source pixels at (sx, sy), written to od[o..o+3] */
@@ -4474,24 +4792,24 @@ function dlBrushGrid() {
   const step = Math.max(1, Math.round(Math.max(W, H) / 300));
   const gw = Math.floor(W / step) + 1, gh = Math.floor(H / step) + 1;
   if (D.brush && D.brush.step === step && D.brush.gw === gw && D.brush.gh === gh) return D.brush;
-  D.brush = { step, gw, gh, ox: new Float32Array(gw * gh), oy: new Float32Array(gw * gh), peak: 0 };
+  D.brush = { step, gw, gh, ox: new Float32Array(gw * gh), oy: new Float32Array(gw * gh), peak: 0, ver: 0 };
   D.brushUndo = [];
   return D.brush;
 }
 
-/* bilinear read of the brush offsets at an arbitrary photo position */
-function dlBrushOffsetAt(grid, x, y) {
+/* bilinear read of the brush offsets at an arbitrary photo position,
+ * written into out[0..1] (perf: no per-node allocation) */
+function dlBrushOffsetAt(grid, x, y, out) {
   const gw = grid.gw, gh = grid.gh;
-  if (gw < 2 || gh < 2) return [0, 0];
+  if (gw < 2 || gh < 2) { out[0] = 0; out[1] = 0; return; }
   const gxf = x / grid.step, gyf = y / grid.step;
   const gx0 = Math.max(0, Math.min(Math.floor(gxf), gw - 2)), fx = gxf - gx0;
   const gy0 = Math.max(0, Math.min(Math.floor(gyf), gh - 2)), fy = gyf - gy0;
   const i00 = gy0 * gw + gx0, i10 = i00 + 1, i01 = i00 + gw, i11 = i01 + 1;
-  const ox = (grid.ox[i00] * (1 - fx) + grid.ox[i10] * fx) * (1 - fy)
-           + (grid.ox[i01] * (1 - fx) + grid.ox[i11] * fx) * fy;
-  const oy = (grid.oy[i00] * (1 - fx) + grid.oy[i10] * fx) * (1 - fy)
-           + (grid.oy[i01] * (1 - fx) + grid.oy[i11] * fx) * fy;
-  return [ox, oy];
+  out[0] = (grid.ox[i00] * (1 - fx) + grid.ox[i10] * fx) * (1 - fy)
+         + (grid.ox[i01] * (1 - fx) + grid.ox[i11] * fx) * fy;
+  out[1] = (grid.oy[i00] * (1 - fx) + grid.oy[i10] * fx) * (1 - fy)
+         + (grid.oy[i01] * (1 - fx) + grid.oy[i11] * fx) * fy;
 }
 
 /* paint one brush dab into the grid. (dx, dy) is how far the pointer
@@ -4503,6 +4821,7 @@ function dlBrushDab(grid, cx, cy, radius, strength, kind, dx, dy) {
   const step = grid.step, gw = grid.gw, gh = grid.gh;
   const gxA = Math.max(0, Math.floor((cx - radius) / step)), gxB = Math.min(gw - 1, Math.ceil((cx + radius) / step));
   const gyA = Math.max(0, Math.floor((cy - radius) / step)), gyB = Math.min(gh - 1, Math.ceil((cy + radius) / step));
+  let peak2 = grid.peak * grid.peak, touched = false;
   for (let gy = gyA; gy <= gyB; gy++) {
     for (let gx = gxA; gx <= gxB; gx++) {
       const vx = gx * step - cx, vy = gy * step - cy;
@@ -4522,10 +4841,15 @@ function dlBrushDab(grid, cx, cy, radius, strength, kind, dx, dy) {
       if (!ax && !ay) continue;
       const i = gy * gw + gx;
       grid.ox[i] += ax; grid.oy[i] += ay;
-      const m = Math.hypot(grid.ox[i], grid.oy[i]);
-      if (m > grid.peak) grid.peak = m;
+      touched = true;
+      /* perf: squared-distance pre-check — sqrt only for a node that can
+       * actually beat the peak (peak is only ever a > 0 gate, so this is
+       * the same decision Math.hypot would make) */
+      const m2 = grid.ox[i] * grid.ox[i] + grid.oy[i] * grid.oy[i];
+      if (m2 > peak2) { grid.peak = Math.sqrt(m2); peak2 = m2; }
     }
   }
+  if (touched) grid.ver++;   // warp-cache signature: brush contents changed
 }
 
 /* stroke snapshots for Undo: the grid is small (a few hundred nodes a
@@ -4535,17 +4859,33 @@ function dlBrushSnap(grid) {
 }
 function dlBrushRestore(grid, snap) {
   grid.ox.set(snap.ox); grid.oy.set(snap.oy); grid.peak = snap.peak;
+  grid.ver++;   // contents changed under the same grid object
 }
 
 /* THE backward lookup the renderer uses: first the point warp (MLS),
  * then the brush field — a dab moved content from home to home+offset,
  * so the lookup steps back by the offset painted at the spot the point
  * warp landed on. With no brush painted this is dlMapPoint untouched. */
-function dlInvMap(x, y, pts, brush) {
-  const m = dlMapPoint(x, y, pts);
-  if (!brush || brush.peak <= 0) return m;
-  const o = dlBrushOffsetAt(brush, m[0], m[1]);
-  return [m[0] - o[0], m[1] - o[1]];
+function dlInvMap(x, y, pts, brush, out) {
+  dlMapPoint(x, y, pts, _dlM);
+  if (!brush || brush.peak <= 0) { out[0] = _dlM[0]; out[1] = _dlM[1]; return; }
+  dlBrushOffsetAt(brush, _dlM[0], _dlM[1], _dlO);
+  out[0] = _dlM[0] - _dlO[0]; out[1] = _dlM[1] - _dlO[1];
+}
+
+/* perf: warp scratch buffers (grid maps + output ImageData), allocated
+ * once per (W, H, step) and reused every render — every byte is fully
+ * rewritten on each pass, so reuse changes nothing in the output. */
+let _dlWarpBuf = null;
+
+function dlWarpBuffers(ctx, W, H, step, gw, gh) {
+  if (_dlWarpBuf && _dlWarpBuf.w === W && _dlWarpBuf.h === H && _dlWarpBuf.step === step) return _dlWarpBuf;
+  _dlWarpBuf = {
+    w: W, h: H, step,
+    mapX: new Float32Array(gw * gh), mapY: new Float32Array(gw * gh),
+    img: ctx.createImageData(W, H),
+  };
+  return _dlWarpBuf;
 }
 
 /* draw the warped photo into ctx (points are NOT drawn here, so Export
@@ -4560,15 +4900,17 @@ function dlRenderWarp(ctx) {
   if ((!pts.length || !displaced) && !brushOn) { ctx.drawImage(D.srcCv, 0, 0); return; }
   const step = Math.max(1, Math.round(Math.max(W, H) / 300));
   const gw = Math.floor(W / step) + 1, gh = Math.floor(H / step) + 1;
-  const mapX = new Float32Array(gw * gh), mapY = new Float32Array(gw * gh);
+  const buf = dlWarpBuffers(ctx, W, H, step, gw, gh);
+  const mapX = buf.mapX, mapY = buf.mapY;
+  const node = [0, 0];
   for (let gy = 0; gy < gh; gy++) {
     for (let gx = 0; gx < gw; gx++) {
-      const m = dlInvMap(gx * step, gy * step, pts, D.brush);
-      mapX[gy * gw + gx] = m[0];
-      mapY[gy * gw + gx] = m[1];
+      dlInvMap(gx * step, gy * step, pts, D.brush, node);
+      mapX[gy * gw + gx] = node[0];
+      mapY[gy * gw + gx] = node[1];
     }
   }
-  const out = ctx.createImageData(W, H);
+  const out = buf.img;
   const od = out.data, sd = src.data;
   for (let y = 0; y < H; y++) {
     const gyf = y / step;
@@ -4588,12 +4930,27 @@ function dlRenderWarp(ctx) {
   ctx.putImageData(out, 0, 0);
 }
 
+/* perf: the theme accent (--violet) is read once and cached — the old
+ * code paid a getComputedStyle on every single draw. Invalidated by a
+ * data-theme MutationObserver, the same pattern the cursor trail uses. */
+let _dlAccent = null;
+function dlAccent() {
+  if (_dlAccent) return _dlAccent;
+  let accent = "#22c55e";
+  try { accent = getComputedStyle(document.documentElement).getPropertyValue("--violet").trim() || accent; } catch (e) {}
+  _dlAccent = accent;
+  return accent;
+}
+try {
+  new MutationObserver(() => { _dlAccent = null; })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+} catch (e) {}
+
 /* numbered dots over the photo; a dragged point keeps a tether + ghost
  * at its home spot so the pull reads clearly */
 function dlDrawPoints(ctx) {
   const D = dlState();
-  let accent = "#22c55e";
-  try { accent = getComputedStyle(document.documentElement).getPropertyValue("--violet").trim() || accent; } catch (e) {}
+  const accent = dlAccent();
   const s = Math.max(6, Math.min(D.src.w, D.src.h) / 58);
   ctx.save();
   ctx.textAlign = "center";
@@ -4625,8 +4982,7 @@ let dlHover = null;   // pointer position over the canvas, photo coords
 function dlDrawBrushCursor(ctx) {
   const D = dlState();
   if (D.mode !== "brush" || !dlHover || !D.src) return;
-  let accent = "#22c55e";
-  try { accent = getComputedStyle(document.documentElement).getPropertyValue("--violet").trim() || accent; } catch (e) {}
+  const accent = dlAccent();
   ctx.save();
   ctx.beginPath(); ctx.arc(dlHover.x, dlHover.y, D.brushSize, 0, 7);
   ctx.strokeStyle = "rgba(0,0,0,.45)"; ctx.lineWidth = 3.5; ctx.stroke();
@@ -4635,12 +4991,40 @@ function dlDrawBrushCursor(ctx) {
   ctx.restore();
 }
 
+/* perf: warp bitmap cache. Rendering the warp is the expensive part of
+ * a draw (inverse map + full resample); the points and brush ring on top
+ * are cheap. The rendered warp is kept on an offscreen canvas keyed by a
+ * signature of everything dlRenderWarp reads — the source photo, every
+ * point's home/dragged coords, and the brush grid's contents version.
+ * A draw whose signature matches just blits the cached bitmap, so a
+ * Brush-mode hover (ring moves, warp inputs untouched) costs no warp. */
+let _dlWarpCache = null;   // { cv, sig, src }
+
+function dlWarpSig(D) {
+  let sig = D.src.w + "x" + D.src.h + "|";
+  for (let i = 0; i < D.points.length; i++) {
+    const p = D.points[i];
+    sig += p.px + "," + p.py + "," + p.qx + "," + p.qy + ";";
+  }
+  sig += "|" + (D.brush ? D.brush.ver + "/" + D.brush.peak : "-");
+  return sig;
+}
+
 function dlDraw() {
   const D = dlState();
   const cv = $("#dlCanvas");
   if (!cv || !D.src) return;
   const ctx = cv.getContext("2d");
-  dlRenderWarp(ctx);
+  const sig = dlWarpSig(D);
+  if (!_dlWarpCache) _dlWarpCache = { cv: document.createElement("canvas"), sig: "", src: null };
+  if (_dlWarpCache.sig !== sig || _dlWarpCache.src !== D.src) {
+    const cc = _dlWarpCache.cv;
+    if (cc.width !== D.src.w || cc.height !== D.src.h) { cc.width = D.src.w; cc.height = D.src.h; }
+    dlRenderWarp(cc.getContext("2d"));
+    _dlWarpCache.sig = sig;
+    _dlWarpCache.src = D.src;
+  }
+  ctx.drawImage(_dlWarpCache.cv, 0, 0);
   dlDrawPoints(ctx);
   dlDrawBrushCursor(ctx);
   const ro = $("#dlReadout");
@@ -4746,6 +5130,8 @@ function dlLoadSource(img, name) {
   if (view) { view.width = w; view.height = h; }
   const empty = $("#dlEmpty");
   if (empty) empty.hidden = true;
+  const dlExp = $("#dlExport");
+  if (dlExp) dlExp.disabled = false;
   dlDraw();
 }
 
@@ -4978,6 +5364,7 @@ function wireDraglab() {
   const resetB = $("#dlResetB");
   if (resetB) resetB.onclick = dlResetAll;
   $("#dlExport").onclick = dlExportPNG;
+  $("#dlExport").disabled = !dlState().src;
   document.querySelectorAll("#dlModeSeg .seg-btn").forEach(b => {
     b.onclick = () => {
       const D = dlState();
@@ -5176,7 +5563,7 @@ self.onmessage = function (e) {
     importScripts(msg.ortSrc);
     try { ort.env.wasm.wasmPaths = msg.wasmDir; } catch (err) {}
     fetchModel(msg.modelUrl, msg.cacheName, function (v) {
-      postMessage({ type: "progress", value: v });
+      postMessage({ type: "progress", value: v, modelUrl: msg.modelUrl });
     }).then(makeSession).then(function (made) {
       sessions[msg.modelUrl] = made;
       postMessage({ id: msg.id, ok: true, backend: made.backend, inputNames: made.session.inputNames, outputNames: made.session.outputNames });
@@ -5207,11 +5594,15 @@ function aiBootWorker() {
   if (aiWorkerState) return aiWorkerState;
   const blob = new Blob([aiWorkerSource()], { type: "text/javascript" });
   const worker = new Worker(URL.createObjectURL(blob));
-  const st = { worker, seq: 0, pending: new Map(), onProgress: null };
+  const st = { worker, seq: 0, pending: new Map(), progressCbs: new Map() };
   worker.onmessage = (e) => {
     const msg = e.data;
     if (msg.type === "progress") {
-      if (st.onProgress) st.onProgress(msg.value);
+      /* progress belongs to ONE model's download — route it to that
+       * session's callback only, so overlapping loads (Cutout starting
+       * while Upscale downloads) never steal each other's bar */
+      const cb = msg.modelUrl ? st.progressCbs.get(msg.modelUrl) : null;
+      if (cb) cb(msg.value);
       return;
     }
     const p = st.pending.get(msg.id);
@@ -5250,7 +5641,7 @@ function aiLoadSession(modelUrl, onProgress) {
   const promise = (async () => {
     try {
       const st = aiBootWorker();
-      st.onProgress = onProgress || null;
+      if (onProgress) st.progressCbs.set(absUrl, onProgress);
       let ready;
       try {
         ready = await aiWorkerSend(st, {
@@ -5258,7 +5649,7 @@ function aiLoadSession(modelUrl, onProgress) {
           modelUrl: absUrl, cacheName: AI_MODEL_CACHE,
         });
       } finally {
-        st.onProgress = null;
+        if (onProgress && st.progressCbs.get(absUrl) === onProgress) st.progressCbs.delete(absUrl);
       }
       return {
         backend: ready.backend,
@@ -5528,6 +5919,8 @@ function coLoadSource(img, name) {
   if (view) { view.width = w; view.height = h; }
   const empty = $("#coEmpty");
   if (empty) empty.hidden = true;
+  const coExp = $("#coExport");
+  if (coExp) coExp.disabled = true;
   coDraw();
 }
 
@@ -5580,8 +5973,10 @@ async function coRun() {
     }
     C.matte = matte;
     coDraw();
+    const coExp2 = $("#coExport");
+    if (coExp2) coExp2.disabled = false;
   } catch (err) {
-    coStatus("Cutout failed: " + (err && err.message ? err.message : err));
+    coStatus("Cutout failed: " + humanErr(err));
   }
   coSetBusy(false);
 }
@@ -5641,6 +6036,7 @@ function wireCutout() {
   };
   $("#coRun").onclick = coRun;
   $("#coExport").onclick = coExportPNG;
+  $("#coExport").disabled = !coState().matte;
   const th = $("#coThreshold"), fe = $("#coFeather");
   if (th) th.oninput = () => {
     const C = coState();
@@ -5907,6 +6303,8 @@ function upLoadSource(img, name) {
   if (view) { view.width = w; view.height = h; }
   const empty = $("#upEmpty");
   if (empty) empty.hidden = true;
+  const upExp = $("#upExport");
+  if (upExp) upExp.disabled = true;
   upProgress(null);
   upDraw();
 }
@@ -6028,11 +6426,13 @@ async function upRun() {
     U.outKind = "ai";
     upProgress(null);
     upDraw();
+    const upExp2 = $("#upExport");
+    if (upExp2) upExp2.disabled = false;
   } catch (err) {
     upProgress(null);
     upStatus(err && err.message === "cancelled"
       ? "Upscale cancelled."
-      : "Upscale failed: " + (err && err.message ? err.message : err));
+      : "Upscale failed: " + humanErr(err));
   }
   upSetBusy(false);
 }
@@ -6066,6 +6466,8 @@ function upPixelRun() {
   U.out = cv;
   U.outKind = "pixel";
   upDraw(note);
+  const upExp3 = $("#upExport");
+  if (upExp3) upExp3.disabled = false;
 }
 
 function upExportPNG() {
@@ -6130,6 +6532,7 @@ function wireUpscale() {
   };
   $("#upRun").onclick = upRun;
   $("#upExport").onclick = upExportPNG;
+  $("#upExport").disabled = !upState().out;
   $("#upPxApply").onclick = () => { if (!upState().busy) upPixelRun(); };
   document.querySelectorAll("#upModeSeg .seg-btn").forEach(b => {
     b.onclick = () => {
@@ -6436,6 +6839,9 @@ function atAddImage(img, name) {
   A.items.push({ name: name || "image", cv, data });
   if (img.close) img.close();
   A.packed = null;
+  const atExpP = $("#atExportPng"), atExpM = $("#atExportManifest");
+  if (atExpP) atExpP.disabled = true;
+  if (atExpM) atExpM.disabled = true;
   atDraw();
 }
 
@@ -6482,6 +6888,9 @@ function atPack() {
   A.packed = { canvas: null, frames, w: res.w, h: res.h, used, skipped };
   A.packed.canvas = atRenderSheet(A);
   atDraw();
+  const atExpP2 = $("#atExportPng"), atExpM2 = $("#atExportManifest");
+  if (atExpP2) atExpP2.disabled = false;
+  if (atExpM2) atExpM2.disabled = false;
 }
 
 /* ---- manifests (pure string builders) ---- */
@@ -6619,11 +7028,15 @@ function wireAtlas() {
   $("#atClear").onclick = () => {
     A.items = [];
     A.packed = null;
+    const atExpP3 = $("#atExportPng"), atExpM3 = $("#atExportManifest");
+    if (atExpP3) atExpP3.disabled = true;
+    if (atExpM3) atExpM3.disabled = true;
     atDraw();
   };
   $("#atPack").onclick = atPack;
   $("#atExportPng").onclick = atExportPNG;
   $("#atExportManifest").onclick = atExportManifest;
+  $("#atExportPng").disabled = $("#atExportManifest").disabled = !atState().packed;
   const repack = () => { if (A.packed) atPack(); };
   const pad = $("#atPad");
   if (pad) pad.oninput = () => {
@@ -6952,6 +7365,8 @@ function nmLoadSource(img, name) {
   const empty = $("#nmEmpty");
   if (empty) empty.hidden = true;
   nmRecompute();
+  const nmExp = $("#nmExport");
+  if (nmExp) nmExp.disabled = !(N.src && N.maps);
 }
 
 async function nmLoadFile(file) {
@@ -7078,6 +7493,7 @@ function wireNormalmap() {
   const wr = $("#nmWrap");
   if (wr) wr.onchange = () => { N.wrap = wr.checked; nmRecompute(); };
   $("#nmExport").onclick = nmExportPNG;
+  $("#nmExport").disabled = !(nmState().src && nmState().maps);
   if (!nmStaticWired) {
     nmStaticWired = true;
     nmWireStage();
@@ -7302,6 +7718,8 @@ function tlLoadSource(img, name) {
   const empty = $("#tlEmpty");
   if (empty) empty.hidden = true;
   tlRecompute();
+  const tlExp = $("#tlExport");
+  if (tlExp) tlExp.disabled = false;
 }
 
 async function tlLoadFile(file) {
@@ -7380,6 +7798,7 @@ function wireTiler() {
     tlRecompute();
   };
   $("#tlExport").onclick = tlExportPNG;
+  $("#tlExport").disabled = !tlState().full;
   if (!tlStaticWired) {
     tlStaticWired = true;
     tlWireStage();
@@ -7724,6 +8143,11 @@ function plAfterOp() {
   plExtract();
   plDraw();
   plPaintPanel();
+  const P = plState();
+  const plExp = $("#plExport"), plG = $("#plGpl"), plJ = $("#plJson");
+  if (plExp) plExp.disabled = !P.work;
+  if (plG) plG.disabled = !P.colors.length;
+  if (plJ) plJ.disabled = !P.colors.length;
 }
 
 function plApplySwap() {
@@ -7850,6 +8274,10 @@ function plLoadSource(img, name) {
   plExtract();
   plDraw();
   plPaintPanel();
+  const plExp2 = $("#plExport"), plG2 = $("#plGpl"), plJ2 = $("#plJson");
+  if (plExp2) plExp2.disabled = !P.work;
+  if (plG2) plG2.disabled = !P.colors.length;
+  if (plJ2) plJ2.disabled = !P.colors.length;
 }
 
 async function plLoadFile(file) {
@@ -7938,6 +8366,8 @@ function wirePalette() {
   $("#plExport").onclick = plExportPNG;
   $("#plGpl").onclick = plExportGpl;
   $("#plJson").onclick = plExportJson;
+  $("#plExport").disabled = !plState().work;
+  $("#plGpl").disabled = $("#plJson").disabled = !plState().colors.length;
   if (!plStaticWired) {
     plStaticWired = true;
     plWireStage();
@@ -8272,7 +8702,7 @@ function gfLoadBytes(buf, name) {
   try {
     decoded = gfDecode(new Uint8Array(buf));
   } catch (err) {
-    gfStatus("couldn't decode that GIF — " + err.message + ".");
+    gfStatus("couldn't decode that GIF — " + humanErr(err) + ".");
     return;
   }
   G.frames = decoded.frames;
@@ -8280,6 +8710,9 @@ function gfLoadBytes(buf, name) {
   G.name = name || "animation";
   const empty = $("#gfEmpty");
   if (empty) empty.hidden = true;
+  const gfExp = $("#gfExport"), gfJ = $("#gfJson");
+  if (gfExp) gfExp.disabled = false;
+  if (gfJ) gfJ.disabled = false;
   gfDraw();
 }
 
@@ -8387,6 +8820,7 @@ function wireGif() {
   };
   $("#gfExport").onclick = gfExportPNG;
   $("#gfJson").onclick = gfExportJSON;
+  $("#gfExport").disabled = $("#gfJson").disabled = !gfState().frames.length;
   if (!gfStaticWired) {
     gfStaticWired = true;
     gfWireStage();
@@ -8516,7 +8950,7 @@ function init() {
   $("#generate").onclick = startFresh;
   $("#generateMobile").onclick = startFresh;
   $("#retryBtn").onclick = () => { state.strict = true; hideRetry(); runPipeline(); };
-  $("#procBtn").onclick = () => {
+  $("#procBtnRetry").onclick = () => {
     // one-click escape hatch: drop to the offline generator and re-run
     state.source = "procedural";
     document.querySelectorAll("#sourceSeg .seg-btn").forEach(x => x.classList.toggle("active", x.dataset.src === "procedural"));
@@ -8670,6 +9104,23 @@ document.addEventListener("DOMContentLoaded", init);
       if (open && e.key === "Escape") setOpen(false);
     });
 
+    /* master Animations switch: flips the .anim-off class the head
+     * script set from this same key, persists "1" = on / "0" = off, and
+     * starts/stops the showcase loop to match (the trail + aura loops
+     * read the class live). aria-checked drives the switch visual,
+     * exactly like the sibling switches. */
+    var animBtn = document.getElementById("animToggle");
+    var applyAnim = function () {
+      if (animBtn) animBtn.setAttribute("aria-checked", animationsOn() ? "true" : "false");
+    };
+    if (animBtn) animBtn.addEventListener("click", function () {
+      var off = document.documentElement.classList.toggle("anim-off");
+      lsSet("m4ster.animations", off ? "0" : "1");
+      applyAnim();
+      if (off) showcaseStop(); else showcaseStart();
+    });
+    applyAnim();
+
     document.getElementById("auraToggle").addEventListener("click", function () {
       saveAura({ enabled: !readAura().enabled });
     });
@@ -8693,6 +9144,7 @@ document.addEventListener("DOMContentLoaded", init);
        * snapshot (theme + aura + rgb) and confirms visually */
       try {
         lsSet(LS_THEME, document.documentElement.getAttribute("data-theme") || "forest");
+        lsSet("m4ster.animations", animationsOn() ? "1" : "0");
         saveAura(readAura());
         saveRGB(readRGB());
       } catch (e) {}
@@ -8912,8 +9364,16 @@ const showcaseAnims = [];
 let showcaseRAF = 0;
 const reduceMotion = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
+/* master Animations switch (Customize): the head script puts .anim-off on
+ * <html> unless localStorage "m4ster.animations" === "1", so animations
+ * are OFF by default and this returns false. Decorative loops (cursor
+ * trail, showcase, aura parallax) check it; content playback never does. */
+function animationsOn() {
+  return !document.documentElement.classList.contains("anim-off");
+}
+
 function drawShowcaseFrame(a) {
-  const ctx = a.cv.getContext("2d");
+  const ctx = a.ctx || (a.ctx = a.cv.getContext("2d"));   // cached at add time below
   const f = a.frames[a.idx % a.frames.length];
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, a.cv.width, a.cv.height);
@@ -8922,25 +9382,61 @@ function drawShowcaseFrame(a) {
   ctx.drawImage(f, Math.floor((a.cv.width - dw) / 2), Math.floor((a.cv.height - dh) / 2), dw, dh);
 }
 
+/* perf: one IntersectionObserver watches every showcase canvas (they live
+ * in separate sections — gallery + presets — so per-canvas is the honest
+ * gate); the shared loop idles to a stop while none of them is on screen
+ * and restarts the moment one scrolls back into view. */
+let showcaseIO = null;
+function showcaseWatch(a) {
+  if (!("IntersectionObserver" in window)) { a.visible = true; return; }
+  if (!showcaseIO) {
+    showcaseIO = new IntersectionObserver((entries) => {
+      let any = false;
+      for (const e of entries) {
+        const anim = showcaseAnims.find((x) => x.cv === e.target);
+        if (anim) anim.visible = e.isIntersecting;
+        if (e.isIntersecting) any = true;
+      }
+      if (any) showcaseStart();
+    });
+  }
+  showcaseIO.observe(a.cv);
+}
+
 function showcaseAdd(cv, frames, fps) {
-  const a = { cv, frames, fps: fps || 8, idx: 0, last: 0 };
+  const a = { cv, ctx: cv.getContext("2d"), frames, fps: fps || 8, idx: 0, last: 0, visible: true };
   drawShowcaseFrame(a);
   showcaseAnims.push(a);
+  showcaseWatch(a);
+  showcaseStart();   // no-op while animations are off / reduced-motion / already running
 }
 
 function showcaseLoop(now) {
-  showcaseRAF = requestAnimationFrame(showcaseLoop);
-  for (const a of showcaseAnims) {
-    if (now - a.last < 1000 / a.fps) continue;
-    a.last = now;
-    a.idx = (a.idx + 1) % a.frames.length;
-    drawShowcaseFrame(a);
+  let anyVisible = false;
+  try {
+    for (const a of showcaseAnims) {
+      if (a.visible === false) continue;
+      anyVisible = true;
+      if (now - a.last < 1000 / a.fps) continue;
+      a.last = now;
+      a.idx = (a.idx + 1) % a.frames.length;
+      drawShowcaseFrame(a);
+    }
+  } finally {
+    /* nothing on screen: park the loop instead of redrawing blind — the
+     * observer restarts it via showcaseStart when a canvas reappears */
+    showcaseRAF = anyVisible ? requestAnimationFrame(showcaseLoop) : 0;
   }
 }
 
 function showcaseStart() {
-  if (reduceMotion() || showcaseRAF) return;
+  if (reduceMotion() || showcaseRAF || !animationsOn()) return;
   showcaseRAF = requestAnimationFrame(showcaseLoop);
+}
+
+function showcaseStop() {
+  if (showcaseRAF) cancelAnimationFrame(showcaseRAF);
+  showcaseRAF = 0;
 }
 
 document.addEventListener("visibilitychange", () => {
@@ -9180,7 +9676,7 @@ function initV6() {
         try {
           const gif = encodeGIF(frames, fps);
           downloadBytes(gif, state.atlas.pngName.replace(/\.png$/, "") + "-preview.gif", "image/gif");
-        } catch (e) { stageMsg("GIF encode failed: " + e.message, true); }
+        } catch (e) { stageMsg("GIF encode failed: " + humanErr(e), true); }
       }, 400); // t+400: animated GIF
     }
     setTimeout(() => downloadJSON(state.atlas.manifest, state.atlas.jsonName), 800); // t+800: manifest JSON
@@ -9223,7 +9719,7 @@ function initEntrances(doc) {
   const aura = $("#aura");
   let ticking = false;
   window.addEventListener("scroll", () => {
-    if (ticking || reduceMotion() || !aura) return;
+    if (ticking || reduceMotion() || !animationsOn() || !aura) return;
     ticking = true;
     requestAnimationFrame(() => {
       aura.style.transform = `translate3d(0, ${Math.round(window.scrollY * 0.06)}px, 0)`;
@@ -9273,12 +9769,33 @@ if (document.readyState === "loading") {
   sizeTrail();
   window.addEventListener("resize", sizeTrail);
   var themeGlow = "34,197,94"; /* forest green default; synced from --violet below */
+  /* perf: the trail glow is pre-rendered ONCE into a sprite at the max
+   * radius (90px) instead of building a fresh radial gradient per spot
+   * per frame. The sprite's stops are exactly the ones the per-spot
+   * gradient used at k = 1 — stop 0 "rgba(glow,0.280)", stop 1
+   * "rgba(glow,0)" — and each spot's fade is applied with globalAlpha = k
+   * while the sprite is drawn scaled to the spot's radius, which is the
+   * same falloff the old gradient produced. Repainted on theme change. */
+  var TR_MAX_R = 90;
+  var trailSprite = document.createElement("canvas");
+  trailSprite.width = trailSprite.height = TR_MAX_R * 2;
+  var trailSpriteCtx = trailSprite.getContext("2d");
+  function paintTrailSprite() {
+    if (!trailSpriteCtx) return;
+    trailSpriteCtx.clearRect(0, 0, TR_MAX_R * 2, TR_MAX_R * 2);
+    var g = trailSpriteCtx.createRadialGradient(TR_MAX_R, TR_MAX_R, 0, TR_MAX_R, TR_MAX_R, TR_MAX_R);
+    g.addColorStop(0, "rgba(" + themeGlow + "," + (0.28 * 1).toFixed(3) + ")");
+    g.addColorStop(1, "rgba(" + themeGlow + ",0)");
+    trailSpriteCtx.fillStyle = g;
+    trailSpriteCtx.fillRect(0, 0, TR_MAX_R * 2, TR_MAX_R * 2);
+  }
   function syncThemeGlow(){
     try{
       var v = getComputedStyle(document.documentElement).getPropertyValue("--violet").trim();
       var m = v.match(/^#([0-9a-f]{6})$/i);
       if(m){ var n = parseInt(m[1], 16); themeGlow = ((n>>16)&255) + "," + ((n>>8)&255) + "," + (n&255); }
     }catch(e){}
+    paintTrailSprite();
   }
   syncThemeGlow();
   try{ new MutationObserver(syncThemeGlow).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme"]}); }catch(e){}
@@ -9288,12 +9805,10 @@ if (document.readyState === "loading") {
       var s = spots[i], age = now - s.born;
       if (age > TR_LIFE) { spots.splice(i, 1); continue; }
       var k = 1 - age / TR_LIFE, r = 90 * (0.5 + 0.5 * k);
-      var g = tctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r);
-      g.addColorStop(0, "rgba(" + themeGlow + "," + (0.28 * k).toFixed(3) + ")");
-      g.addColorStop(1, "rgba(" + themeGlow + ",0)");
-      tctx.fillStyle = g;
-      tctx.beginPath(); tctx.arc(s.x, s.y, r, 0, 6.2832); tctx.fill();
+      tctx.globalAlpha = k;
+      tctx.drawImage(trailSprite, s.x - r, s.y - r, r * 2, r * 2);
     }
+    tctx.globalAlpha = 1;
   }
 
   var tx = -100, ty = -100, x = -100, y = -100; /* target / lerped orb pos */
@@ -9333,11 +9848,12 @@ if (document.readyState === "loading") {
       document.documentElement.classList.add("has-orb");
     }
     var now = performance.now();
-    if (now - trLast >= TR_GAP) {
+    if (animationsOn() && now - trLast >= TR_GAP) {   // no trail spots while animations are off
       trLast = now;
       spots.push({ x: e.clientX, y: e.clientY, born: now });
       if (spots.length > TR_MAX) spots.splice(0, spots.length - TR_MAX);
     }
+    pokeTick();   // wake the orb loop if it parked itself while idle
   }, { passive: true });
   document.addEventListener("mouseout", function (e) {
     if (!e.relatedTarget) orb.style.opacity = "0";
@@ -9363,45 +9879,71 @@ if (document.readyState === "loading") {
 
   var auraEl = document.getElementById("aura");
   var lastT = "", lastA = "";
-  (function tick() {
-    try {
+  /* perf: the loop parks itself once nothing it drives can change any
+   * more — orb settled on the pointer, aura parallax converged, no live
+   * trail spots. A parked frame would have written nothing anyway (the
+   * old loop only re-cleared an already-clear trail canvas), so parking
+   * is invisible; the next pointermove (or a return to the tab) re-arms
+   * it via pokeTick. */
+  var tickLive = false;
+  function pokeTick() {
+    if (tickLive) return;
+    tickLive = true;
+    requestAnimationFrame(runTick);
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) pokeTick();
+  });
+  function runTick() {
+    var again = false;
+    try { again = tickFrame(); }
+    catch (e) { again = true; /* a trail failure must never freeze the orb */ }
+    if (again) requestAnimationFrame(runTick);
+    else tickLive = false;
+  }
+  function tickFrame() {
+    if (document.hidden) return true;   // hidden tab: stay armed, do no work
     /* tight follow (was 0.22 — felt floaty) + snap when converged, so the
      * loop writes nothing once the orb settles instead of micro-lerping */
     var dx = tx - x, dy = ty - y;
     if (dx * dx + dy * dy < 0.01) { x = tx; y = ty; }
     else { x += dx * 0.45; y += dy * 0.45; }
     var k = x.toFixed(1) + "," + y.toFixed(1);
-    if (k !== lastT) {
+    var orbMoved = k !== lastT;
+    if (orbMoved) {
       orb.style.transform = "translate3d(" + x.toFixed(1) + "px," + y.toFixed(1) + "px,0)";
       lastT = k;
     }
     /* aura parallax: direct composited transform on the aura layer, written
      * only when it changed — the old :root var write forced a full style
-     * recalc every frame, which was the jank */
-    var nx = (tx / window.innerWidth - 0.5) * 2;
-    var ny = (ty / window.innerHeight - 0.5) * 2;
-    ax += (nx - ax) * 0.08; ay += (ny - ay) * 0.08;
-    var ak = (ax * 1.5).toFixed(2) + "," + (ay * 1.5).toFixed(2);
-    if (ak !== lastA && auraEl) {
-      auraEl.style.transform = "translate3d(" + (ax * 1.5).toFixed(2) + "vmax," + (ay * 1.5).toFixed(2) + "vmax,0)";
-      lastA = ak;
+     * recalc every frame, which was the jank. Frozen while animations are
+     * off (the site rests still); the lerp resumes untouched when back on. */
+    var anim = animationsOn();
+    var auraMoved = false;
+    if (anim) {
+      var nx = (tx / window.innerWidth - 0.5) * 2;
+      var ny = (ty / window.innerHeight - 0.5) * 2;
+      ax += (nx - ax) * 0.08; ay += (ny - ay) * 0.08;
+      var ak = (ax * 1.5).toFixed(2) + "," + (ay * 1.5).toFixed(2);
+      auraMoved = ak !== lastA;
+      if (auraMoved && auraEl) {
+        auraEl.style.transform = "translate3d(" + (ax * 1.5).toFixed(2) + "vmax," + (ay * 1.5).toFixed(2) + "vmax,0)";
+        lastA = ak;
+      }
     }
     /* cursor glow trail (5IN1 GridGlow): fading spots, drawn only while moving */
+    if (!anim && spots.length) spots.length = 0;   // toggled off mid-trail: spots die at once
     if (tctx && spots.length) drawTrail(performance.now());
     else if (tctx && trail.width) tctx.clearRect(0, 0, trail.width, trail.height);
-    } finally { requestAnimationFrame(tick); /* a trail failure must never freeze the orb */ }
-  })();
+    return orbMoved || auraMoved || spots.length > 0;
+  }
+  pokeTick();
 })();
 
-/* v6.9: PWA — register SW, Install App button (Download section only).
- * Button shows on beforeinstallprompt, hides after install or 6s timeout,
- * and never shows when already running as installed PWA (standalone). */
+/* v6.9: PWA — Install App button (Download section only). The service
+ * worker itself is registered once by the guarded block in index.html
+ * (updateViaCache "none" + one-time reload on controller change). */
 (function () {
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function () {
-      navigator.serviceWorker.register("sw.js").catch(function () {});
-    });
-  }
   var btn = document.getElementById("installApp");
   if (!btn) return;
   var isStandalone = window.matchMedia("(display-mode: standalone)").matches ||
@@ -9618,9 +10160,72 @@ function m3FileData(prov, path, file) {
     is_stream: false
   };
 }
+/* Upload prep: phone photos arrive at 3–5 MB and every provider in the
+ * chain re-uploads the file from scratch, so one big photo costs that
+ * upload up to five times. Anything over the gate is redrawn once, here,
+ * at at most 1024px on the long edge — plenty for image-to-3D — and the
+ * whole chain then shares the small copy. Pure decision helpers first,
+ * so the gate math is testable without a DOM. */
+const M3_UPLOAD_MAX_BYTES = 900 * 1024;
+const M3_UPLOAD_MAX_EDGE = 1024;
+function m3ShrinkDecision(size, width, height) {
+  return size > M3_UPLOAD_MAX_BYTES || width > M3_UPLOAD_MAX_EDGE || height > M3_UPLOAD_MAX_EDGE;
+}
+function m3ShrinkTarget(width, height) {
+  const scale = Math.min(1, M3_UPLOAD_MAX_EDGE / Math.max(width, height));
+  return { w: Math.max(1, Math.round(width * scale)), h: Math.max(1, Math.round(height * scale)) };
+}
+async function m3PrepareImage(file) {
+  try {
+    if (!file || !/^image\//.test(file.type || "")) return file;
+    let src = null, srcUrl = null, w = 0, h = 0;
+    if (typeof createImageBitmap === "function") {
+      try { src = await createImageBitmap(file); w = src.width; h = src.height; }
+      catch (e) { src = null; }
+    }
+    if (!src) {
+      srcUrl = URL.createObjectURL(file);
+      src = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("could not read that image"));
+        img.src = srcUrl;
+      });
+      w = src.naturalWidth; h = src.naturalHeight;
+    }
+    const cleanup = () => {
+      if (srcUrl) URL.revokeObjectURL(srcUrl);
+      if (src && src.close) src.close();
+    };
+    if (!w || !h || !m3ShrinkDecision(file.size, w, h)) { cleanup(); return file; }
+    const t = m3ShrinkTarget(w, h);
+    const cv = document.createElement("canvas");
+    cv.width = t.w; cv.height = t.h;
+    const ctx = cv.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(src, 0, 0, t.w, t.h);
+    cleanup();
+    /* a transparent source must stay PNG; a flat photo goes out as JPEG,
+     * which is far smaller for the same pixels */
+    let hasAlpha = false;
+    try {
+      const px = ctx.getImageData(0, 0, t.w, t.h).data;
+      for (let i = 3; i < px.length; i += 4) { if (px[i] < 250) { hasAlpha = true; break; } }
+    } catch (e) { hasAlpha = true; }
+    const type = hasAlpha ? "image/png" : "image/jpeg";
+    const blob = await new Promise((res) => cv.toBlob(res, type, type === "image/jpeg" ? 0.87 : undefined));
+    if (!blob) return file;
+    const base = (file.name || "image").replace(/\.[a-z0-9]+$/i, "");
+    return new File([blob], base + (type === "image/png" ? ".png" : ".jpg"), { type: type });
+  } catch (e) {
+    return file; /* any surprise anywhere: the original goes up untouched */
+  }
+}
 /* join the Gradio queue, then read the SSE stream until process_completed.
- * Resolves with the call's output data array; throws loud on any failure. */
-async function m3Call(prov, session, fnIndex, data, deadline) {
+ * Resolves with the call's output data array; throws loud on any failure.
+ * Optional onEvent({position, eta}) fires on queue "estimation" events —
+ * position is 1-based (rank + 1), eta is seconds; either may be null when
+ * the provider does not send it. */
+async function m3Call(prov, session, fnIndex, data, deadline, onEvent) {
   const join = await m3Fetch(prov.host + prov.base + "/queue/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -9656,6 +10261,15 @@ async function m3Call(prov, session, fnIndex, data, deadline) {
         if (evt.msg === "process_error") {
           throw new Error(String(evt.error || "the provider reported an error"));
         }
+        if (evt.msg === "estimation" && onEvent) {
+          const pos = typeof evt.queue_position === "number" ? evt.queue_position
+            : typeof evt.rank === "number" ? evt.rank + 1 : null;
+          const eta = typeof evt.rank_eta === "number" ? evt.rank_eta
+            : typeof evt.eta === "number" ? evt.eta : null;
+          if (pos !== null || eta !== null) {
+            try { onEvent({ position: pos, eta: eta }); } catch (e) { /* a status callback must never break the run */ }
+          }
+        }
       }
     }
     throw new Error("the queue stream ended before the mesh finished");
@@ -9663,6 +10277,25 @@ async function m3Call(prov, session, fnIndex, data, deadline) {
     if (e && e.name === "AbortError") throw m3TimeoutErr();
     throw e;
   } finally { clearTimeout(timer); }
+}
+/* queue-position reporter for m3Call's onEvent: speaks at most once per
+ * 5 seconds, and only when the position actually changed. Providers that
+ * never send estimation events simply never trigger it. */
+function m3QueueSay(say, name) {
+  let lastAt = 0, lastPos = null;
+  return function (q) {
+    if (!q || q.position === null || q.position === undefined) return;
+    if (q.position === lastPos) return;
+    const now = Date.now();
+    if (now - lastAt < 5000) return;
+    lastAt = now;
+    lastPos = q.position;
+    let t = name + " — in the free queue — #" + q.position + " in line";
+    if (q.eta !== null && q.eta !== undefined && isFinite(q.eta) && q.eta > 0) {
+      t += ", roughly ~" + Math.max(1, Math.round(q.eta)) + "s";
+    }
+    say(t + "…");
+  };
 }
 async function m3FetchBlob(url, deadline) {
   const res = await m3Fetch(url, {}, deadline);
@@ -9675,18 +10308,19 @@ async function m3FetchBlob(url, deadline) {
 async function m3RunSF3D(file, say) {
   const prov = M3_PROVIDERS.sf3d, session = m3Session();
   const deadline = Date.now() + M3_TIMEOUT_MS;
+  const onQ = m3QueueSay(say, prov.name);
   say("Stable Fast 3D — uploading your image…");
   const fd = m3FileData(prov, await m3Upload(prov, file, deadline), file);
   say("Stable Fast 3D — checking the background…");
-  const step1 = await m3Call(prov, session, 4, [fd, 0.85], deadline);
+  const step1 = await m3Call(prov, session, 4, [fd, 0.85], deadline, onQ);
   const btn = step1 && step1[0];
   const btnVal = btn && typeof btn === "object" ? btn.value : btn;
   if (btnVal === "Remove Background") {
     say("Stable Fast 3D — removing the background…");
-    await m3Call(prov, session, 5, ["Remove Background", fd, null, 0.85, "None", -1, 1024], deadline);
+    await m3Call(prov, session, 5, ["Remove Background", fd, null, 0.85, "None", -1, 1024], deadline, onQ);
   }
   say("Stable Fast 3D — building your mesh (usually ~10 seconds)…");
-  const step3 = await m3Call(prov, session, 5, ["Run", fd, null, 0.85, "None", -1, 1024], deadline);
+  const step3 = await m3Call(prov, session, 5, ["Run", fd, null, 0.85, "None", -1, 1024], deadline, onQ);
   const upd = step3 && step3[4];
   const glbFd = upd && typeof upd === "object" && "value" in upd ? upd.value : upd;
   const url = m3FileUrl(prov, glbFd);
@@ -9701,18 +10335,19 @@ async function m3RunSF3D(file, say) {
 async function m3RunInstantMesh(file, say) {
   const prov = M3_PROVIDERS.instantmesh, session = m3Session();
   const deadline = Date.now() + M3_TIMEOUT_MS;
+  const onQ = m3QueueSay(say, prov.name);
   say("InstantMesh — uploading your image…");
   const fd = m3FileData(prov, await m3Upload(prov, file, deadline), file);
   say("InstantMesh — preparing the image…");
-  const pre = await m3Call(prov, session, 2, [fd, true], deadline);
+  const pre = await m3Call(prov, session, 2, [fd, true], deadline, onQ);
   const processed = pre && pre[0];
   if (!processed) throw new Error("InstantMesh preprocessing returned no image");
   say("InstantMesh — dreaming up six views of your subject…");
-  const mvs = await m3Call(prov, session, 3, [processed, 75, 42], deadline);
+  const mvs = await m3Call(prov, session, 3, [processed, 75, 42], deadline, onQ);
   const showImg = mvs && mvs[1];
   if (!showImg) throw new Error("InstantMesh returned no multiview image");
   say("InstantMesh — building your mesh…");
-  const made = await m3Call(prov, session, 4, [showImg], deadline);
+  const made = await m3Call(prov, session, 4, [showImg], deadline, onQ);
   const objFd = made && made[0], glbFd = made && made[1];
   const glbUrl = m3FileUrl(prov, glbFd);
   if (!glbUrl) throw new Error("InstantMesh finished but returned no mesh file");
@@ -9732,18 +10367,19 @@ async function m3RunInstantMesh(file, say) {
 async function m3RunTrellis2(file, say) {
   const prov = M3_PROVIDERS.trellis2, session = m3Session();
   const deadline = Date.now() + M3_TIMEOUT_MS;
+  const onQ = m3QueueSay(say, prov.name);
   say("TRELLIS.2 — starting a session on the free GPU…");
-  await m3Call(prov, session, 2, [], deadline);
+  await m3Call(prov, session, 2, [], deadline, onQ);
   say("TRELLIS.2 — uploading your image…");
   const fd = m3FileData(prov, await m3Upload(prov, file, deadline), file);
   say("TRELLIS.2 — removing the background…");
-  const pre = await m3Call(prov, session, 4, [fd], deadline);
+  const pre = await m3Call(prov, session, 4, [fd], deadline, onQ);
   const processed = pre && pre[0];
   if (!processed) throw new Error("TRELLIS.2 preprocessing returned no image");
   say("TRELLIS.2 — building your textured mesh (usually ~1 minute)…");
-  await m3Call(prov, session, 7, [processed, 0, "1024", 7.5, 0.7, 12, 5.0, 7.5, 0.5, 12, 3.0, 1.0, 0.0, 12, 3.0], deadline);
+  await m3Call(prov, session, 7, [processed, 0, "1024", 7.5, 0.7, 12, 5.0, 7.5, 0.5, 12, 3.0, 1.0, 0.0, 12, 3.0], deadline, onQ);
   say("TRELLIS.2 — packing the GLB…");
-  const made = await m3Call(prov, session, 9, [null, 300000, (typeof window !== "undefined" && window.M3_TEXSIZE) || 2048], deadline);
+  const made = await m3Call(prov, session, 9, [null, 300000, (typeof window !== "undefined" && window.M3_TEXSIZE) || 2048], deadline, onQ);
   const rawFd = made && made[0];
   const glbFd = rawFd && typeof rawFd === "object" && "value" in rawFd ? rawFd.value : rawFd;
   const url = m3FileUrl(prov, glbFd);
@@ -9768,16 +10404,17 @@ async function m3RunTrellis2(file, say) {
 async function m3RunTrellis(file, say) {
   const prov = M3_PROVIDERS.trellis, session = m3Session();
   const deadline = Date.now() + M3_TIMEOUT_MS;
+  const onQ = m3QueueSay(say, prov.name);
   say("TRELLIS (community) — starting a session on the free GPU…");
-  await m3Call(prov, session, 4, [], deadline);
+  await m3Call(prov, session, 4, [], deadline, onQ);
   say("TRELLIS (community) — uploading your image…");
   const fd = m3FileData(prov, await m3Upload(prov, file, deadline), file);
   say("TRELLIS (community) — removing the background…");
-  const pre = await m3Call(prov, session, 8, [fd], deadline);
+  const pre = await m3Call(prov, session, 8, [fd], deadline, onQ);
   const processed = pre && pre[0];
   if (!processed) throw new Error("TRELLIS (community) preprocessing returned no image");
   say("TRELLIS (community) — building your mesh (usually ~1 minute)…");
-  const made = await m3Call(prov, session, 11, [processed, [], null, 0, 7.5, 12, 3.0, 12, "stochastic", 0.95, 1024], deadline);
+  const made = await m3Call(prov, session, 11, [processed, [], null, 0, 7.5, 12, 3.0, 12, "stochastic", 0.95, 1024], deadline, onQ);
   const unwrap = (v) => v && typeof v === "object" && "value" in v ? v.value : v;
   const glbFd = unwrap(made && made[2]) || unwrap(made && made[3]);
   const url = m3FileUrl(prov, glbFd);
@@ -9802,6 +10439,7 @@ async function m3RunTrellis(file, say) {
 async function m3RunHunyuanMini(file, say) {
   const prov = M3_PROVIDERS["hunyuan-mini"], session = m3Session();
   const deadline = Date.now() + M3_TIMEOUT_MS;
+  const onQ = m3QueueSay(say, prov.name);
   say("Hunyuan3D-2 Mini Turbo — uploading your image…");
   let upPath;
   try {
@@ -9814,7 +10452,29 @@ async function m3RunHunyuanMini(file, say) {
   }
   const fd = m3FileData(prov, upPath, file);
   say("Hunyuan3D-2 Mini Turbo — building your mesh (usually ~15 seconds)…");
-  const made = await m3Call(prov, session, 4, [null, fd, null, null, null, null, 5, 5.0, 1234, 256, true, 8000, true], deadline);
+  const made = await m3Call(prov, session, 4, [null, fd, null, null, null, null, 5, 5.0, 1234, 256, true, 8000, true], deadline, onQ);
+  const rawFd = made && made[0];
+  const glbFd = rawFd && typeof rawFd === "object" && "value" in rawFd ? rawFd.value : rawFd;
+  const url = m3FileUrl(prov, glbFd);
+  if (!url) throw new Error("Hunyuan3D-2 Mini Turbo finished but returned no mesh file");
+  say("Hunyuan3D-2 Mini Turbo — downloading your mesh…");
+  return { glb: await m3FetchBlob(url, deadline), obj: null };
+}
+
+/* True text→mesh on the same Mini Turbo call: the prompt goes in slot 0
+ * and every image slot stays null, so no image is drawn or uploaded at
+ * all — the model builds the shape from the words alone. Same output
+ * shape as image mode (GLB in output[0], same {value} unwrap), and the
+ * same caveat: SHAPE ONLY, the mesh comes out untextured. (The full
+ * Hunyuan3D-2 space was trialled for this on 2026-10-30 and cannot
+ * serve it — its deployment answers "Text to 3D is disable", so the
+ * mini space is the only direct route.) */
+async function m3RunHunyuanText(prompt, say) {
+  const prov = M3_PROVIDERS["hunyuan-mini"], session = m3Session();
+  const deadline = Date.now() + M3_TIMEOUT_MS;
+  const onQ = m3QueueSay(say, prov.name);
+  say("Hunyuan3D-2 Mini Turbo — building your mesh straight from your words (shape only, untextured)…");
+  const made = await m3Call(prov, session, 4, [prompt, null, null, null, null, null, 5, 5.0, 1234, 256, true, 8000, true], deadline, onQ);
   const rawFd = made && made[0];
   const glbFd = rawFd && typeof rawFd === "object" && "value" in rawFd ? rawFd.value : rawFd;
   const url = m3FileUrl(prov, glbFd);
@@ -9845,10 +10505,7 @@ function wire3DLab() {
   let file = null, running = false, objUrls = [];
 
   const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(2) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
-  const shortErr = (e) => {
-    const m = e && e.message ? String(e.message) : String(e);
-    return m.length > 140 ? m.slice(0, 140) + "…" : m;
-  };
+  const shortErr = (e) => humanErr(e);
   /* ZeroGPU quota refusals ("quota" / "GPU duration" in the message) mean
    * the shared free GPU budget is busy right now — a switch signal in
    * AUTO, not a dead end. */
@@ -10008,6 +10665,10 @@ function wire3DLab() {
       const step = Math.max(-1, Math.min(1, e.deltaY / 100));
       m3three.zoomGoal = Math.max(c.minDistance, Math.min(c.maxDistance, m3three.zoomGoal * (1 + step * 0.14)));
     }, { capture: true, passive: false });
+    /* perf: per-frame scratch vectors for the zoom easing + gizmo pass —
+     * the tick used to clone() two fresh Vector3s every frame */
+    const _m3ZoomOff = new THREE.Vector3();
+    const _m3GizmoDir = new THREE.Vector3();
     const tick = () => {
       m3three.raf = requestAnimationFrame(tick);
       if (!wrap.offsetParent) return; // stage hidden — idle cheap
@@ -10018,7 +10679,7 @@ function wire3DLab() {
         camera.updateProjectionMatrix();
       }
       if (m3three.zoomGoal) {
-        const off = m3three.camera.position.clone().sub(m3three.controls.target);
+        const off = _m3ZoomOff.copy(m3three.camera.position).sub(m3three.controls.target);
         const cur = off.length();
         const nd = cur + (m3three.zoomGoal - cur) * 0.18;
         if (Math.abs(m3three.zoomGoal - nd) < m3three.zoomGoal * 0.003) { off.setLength(m3three.zoomGoal); m3three.zoomGoal = 0; }
@@ -10030,7 +10691,7 @@ function wire3DLab() {
       renderer.render(scene, camera);
       if (m3three.model && w > 280 && h > 220) {
         const gs = 84;
-        const dir = camera.position.clone().sub(controls.target).normalize();
+        const dir = _m3GizmoDir.copy(camera.position).sub(controls.target).normalize();
         gizmoCam.position.copy(dir.multiplyScalar(3.1));
         gizmoCam.up.copy(camera.up);
         gizmoCam.lookAt(0, 0, 0);
@@ -10231,7 +10892,7 @@ function wire3DLab() {
       const inp = document.getElementById("m3ChainInput");
       if (inp) setTimeout(() => inp.focus({ preventScroll: true }), 60);
       const cs = document.getElementById("m3ChainStatus");
-      if (cs && !cs.textContent) cs.textContent = "One click: the hub draws it, then builds the mesh itself.";
+      if (cs && !cs.textContent) cs.textContent = "One click: your words go straight to a text-to-3D model. Direct meshes are shape-only (untextured).";
     }
   }
   if (tabText) tabText.addEventListener("click", () => m3SetMode(true));
@@ -10677,6 +11338,10 @@ function wire3DLab() {
       list.appendChild(row);
     });
   }
+  const bridgeGuide = document.getElementById("m3BridgeGuide");
+  if (bridgeGuide) bridgeGuide.addEventListener("click", () => {
+    downloadBytes(new TextEncoder().encode(MESH_README), "framelab-mesh-import-guide.txt", "text/plain");
+  });
   window.M3_LOAD_GLB = function (url, name) {
     const flip = document.getElementById("flip3d");
     if (flip) flip.click();
@@ -10825,13 +11490,48 @@ function wire3DLab() {
     });
   });
 
-  async function runOne(id) {
-    if (id === "sf3d") return m3RunSF3D(file, say);
-    if (id === "trellis2") return m3RunTrellis2(file, say);
-    if (id === "trellis") return m3RunTrellis(file, say);
-    if (id === "hunyuan-mini") return m3RunHunyuanMini(file, say);
-    return m3RunInstantMesh(file, say);
+  async function runOne(id, f) {
+    const useFile = f || file;
+    if (id === "sf3d") return m3RunSF3D(useFile, say);
+    if (id === "trellis2") return m3RunTrellis2(useFile, say);
+    if (id === "trellis") return m3RunTrellis(useFile, say);
+    if (id === "hunyuan-mini") return m3RunHunyuanMini(useFile, say);
+    return m3RunInstantMesh(useFile, say);
   }
+
+  /* one presentation path for every finished mesh — download links,
+   * sizes, the result note, the viewer — whoever built the mesh */
+  function presentResult(out, usedName, usedId, secs) {
+    const glbUrl = URL.createObjectURL(out.glb);
+    objUrls.push(glbUrl);
+    glbLink.href = glbUrl;
+    glbSize.textContent = "· " + fmtSize(out.glb.size);
+    if (out.obj) {
+      const objUrl = URL.createObjectURL(out.obj);
+      objUrls.push(objUrl);
+      objLink.href = objUrl;
+      objSize.textContent = "· " + fmtSize(out.obj.size);
+      objLink.hidden = false;
+    } else {
+      objLink.hidden = true;
+    }
+    resultNote.textContent = "Made by " + usedName + " in ~" + secs + "s, free. GLB drops straight into Unity / Unreal / Godot." +
+      (usedId === "hunyuan-mini"
+        ? " Note: Hunyuan3D-2 Mini Turbo is shape-only — this mesh is untextured (plain surface, no colors baked in), ready for your own materials."
+        : "");
+    result.hidden = false;
+    say("Done — your mesh is ready below. ⬇");
+    showGlbPreview(glbUrl);
+  }
+  /* the Text to 3D direct route lands here — same reset the Generate
+   * button does at run start, then the shared presentation */
+  window.M3_SHOW_RESULT = function (out, usedName, usedId, secs) {
+    result.hidden = true;
+    hideGlbPreview();
+    objUrls.forEach((u) => URL.revokeObjectURL(u));
+    objUrls = [];
+    presentResult(out, usedName, usedId, secs);
+  };
 
   go.addEventListener("click", async () => {
     if (!file || running) return;
@@ -10848,6 +11548,14 @@ function wire3DLab() {
     M3_TOKEN = aiKeyFor("hf-flux");
     const t0 = Date.now();
     try {
+      /* shrink a big photo ONCE, before the chain starts: every provider
+       * — and every AUTO fallback after it — uploads this same copy */
+      const runFile = await m3PrepareImage(file);
+      if (runFile !== file) {
+        say("Big photo — shrunk a copy first so the upload is fast. Every model gets the smaller file.");
+        /* hold the note for a beat, like the chain announcements below */
+        await new Promise((r) => setTimeout(r, 900));
+      }
       let out, usedName, usedId;
       if (mode === "auto") {
         /* AUTO chain: fast SF3D → textured TRELLIS.2 → InstantMesh →
@@ -10859,7 +11567,7 @@ function wire3DLab() {
         const triedErrs = [];
         for (let i = 0; i < chain.length; i++) {
           try {
-            out = await runOne(chain[i]);
+            out = await runOne(chain[i], runFile);
             usedName = M3_PROVIDERS[chain[i]].name;
             usedId = chain[i];
             lastErr = null;
@@ -10882,31 +11590,12 @@ function wire3DLab() {
         }
         if (!out) { const er = lastErr || new Error("no provider ran"); er.triedErrs = triedErrs; throw er; }
       } else {
-        out = await runOne(mode);
+        out = await runOne(mode, runFile);
         usedName = M3_PROVIDERS[mode].name;
         usedId = mode;
       }
       const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
-      const glbUrl = URL.createObjectURL(out.glb);
-      objUrls.push(glbUrl);
-      glbLink.href = glbUrl;
-      glbSize.textContent = "· " + fmtSize(out.glb.size);
-      if (out.obj) {
-        const objUrl = URL.createObjectURL(out.obj);
-        objUrls.push(objUrl);
-        objLink.href = objUrl;
-        objSize.textContent = "· " + fmtSize(out.obj.size);
-        objLink.hidden = false;
-      } else {
-        objLink.hidden = true;
-      }
-      resultNote.textContent = "Made by " + usedName + " in ~" + secs + "s, free. GLB drops straight into Unity / Unreal / Godot." +
-        (usedId === "hunyuan-mini"
-          ? " Note: Hunyuan3D-2 Mini Turbo is shape-only — this mesh is untextured (plain surface, no colors baked in), ready for your own materials."
-          : "");
-      result.hidden = false;
-      say("Done — your mesh is ready below. ⬇");
-      showGlbPreview(glbUrl);
+      presentResult(out, usedName, usedId, secs);
     } catch (e) {
       let em = shortErr(e);
       if (!/[.!?]$/.test(em)) em += ".";
@@ -11173,7 +11862,7 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       const ok = await window.M3_SPLIT(mode);
       el.textContent = ok ? "Split GLB downloaded." : "That split came out empty — try the other half.";
-    } catch (e) { el.textContent = "Split failed in the browser: " + (e && e.message ? e.message : e); }
+    } catch (e) { el.textContent = "Split failed in the browser: " + humanErr(e); }
   }
   $("ppSplitTop").addEventListener("click", () => doSplit("top", $("ppSplitStatus")));
   $("ppSplitBottom").addEventListener("click", () => doSplit("bottom", $("ppSplitStatus")));
@@ -11284,7 +11973,7 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       const ok = await window.M3_EXPORT_WITH_BASE();
       stEl.textContent = ok ? "GLB with base downloaded." : "Add a base first, then export.";
-    } catch (e) { stEl.textContent = "Export failed: " + (e && e.message ? e.message : e); }
+    } catch (e) { stEl.textContent = "Export failed: " + humanErr(e); }
   });
   // edit
   function doEdit(action, msg) {
@@ -11319,10 +12008,14 @@ document.addEventListener("DOMContentLoaded", function () {
   function scrollTo(id) { const el = $(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }
 
   /* --- Text to 3D: fully independent, inside the studio ---
-   * The studio draws the image itself through the same free AI API the
-   * 2D side uses — the 2D wizard is never opened, flipped to, or
-   * borrowed, and its rows are never touched. Steps live in the panel:
-   * 1 Describe, 2 Draw, 3 Build mesh. */
+   * First the direct route: the prompt goes straight to Hunyuan3D-2's
+   * text-to-3D call and the mesh lands in the studio viewer — no image
+   * is drawn at all, and the mesh is shape-only (untextured). Only if
+   * the direct route cannot answer does the classic route run: the
+   * studio draws the image itself through the same free AI API the 2D
+   * side uses, then builds the mesh from it. Either way the 2D wizard
+   * is never opened, flipped to, or borrowed, and its rows are never
+   * touched. Steps live in the panel: 1 Describe, 2 Build mesh. */
   function t3dStep(n) {
     const box = $("m3TSteps");
     if (!box) return;
@@ -11340,12 +12033,29 @@ document.addEventListener("DOMContentLoaded", function () {
     window.M3_T3D_RUNNING = true;
     const btn = $("m3ChainBtn");
     if (btn) btn.disabled = true;
+    const t0 = Date.now();
     try {
       /* faces die on Smart: it routes AUTO to InstantMesh first. Text
        * prompts are characters and detailed objects — build them on
        * High Detail. The toggle is right there to switch to Smart. */
       if (window.M3_SMART_TOPO) { const hd = $("m3TopoDetail"); if (hd) hd.click(); }
       t3dStep(2);
+      /* same token rule as the Generate button: the saved HF token (if
+       * any) is read once at run start and rides the direct calls */
+      try { M3_TOKEN = (aiKeys().huggingface || "").trim(); } catch (e) {}
+      try {
+        const direct = await m3RunHunyuanText(text, (t) => t3dStatus(t));
+        const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
+        if (window.M3_SHOW_RESULT) window.M3_SHOW_RESULT(direct, "Hunyuan3D-2 Mini Turbo", "hunyuan-mini", secs);
+        t3dStep(3);
+        t3dStatus("Done — built straight from your words by Hunyuan3D-2 Mini Turbo. Shape only: the mesh is untextured, ready for your own materials.");
+        return;
+      } catch (directErr) {
+        t3dStatus("The direct text-to-mesh route could not answer (" + humanErr(directErr).slice(0, 120) + ") — falling back: drawing an image from your words first, then building the mesh from it…");
+        /* hold the note for a beat so it can be read before the
+         * fallback's own statuses take over the line */
+        await new Promise((r) => setTimeout(r, 1200));
+      }
       const shaped = text + ", full body, entire figure visible with empty margin around it, head large and clearly detailed, standing straight facing the camera, plain solid white background, studio product photography, sharp focus, no text";
       let bmp = null;
       try {
@@ -11367,7 +12077,7 @@ document.addEventListener("DOMContentLoaded", function () {
       setTimeout(() => { const go = $("m3Go"); if (go && !go.disabled) go.click(); }, 600);
     } catch (e) {
       t3dStep(1);
-      t3dStatus("Text to 3D stopped: " + String((e && e.message) || e).slice(0, 220));
+      t3dStatus("Text to 3D stopped: " + humanErr(e));
     } finally {
       window.M3_T3D_RUNNING = false;
       if (btn) btn.disabled = false;
@@ -11382,7 +12092,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const inp = $("m3ChainInput");
     if (inp) inp.value = promptText;
     const sk = $("skStatus");
-    if (sk) sk.textContent = "Skill running in the 3D studio — image first, mesh right after, all automatic.";
+    if (sk) sk.textContent = "Skill running in the 3D studio — words straight to a mesh, all automatic.";
     scrollTo("lab3d");
     window.M3_TEXT_TO_3D(promptText);
   };
@@ -11399,6 +12109,7 @@ document.addEventListener("DOMContentLoaded", function () {
    * a source thumb / enabled Generate means step 1 is done; a loaded
    * model means all three are. */
   setInterval(() => {
+    if (document.hidden) return;
     const box = $("m3ISteps");
     if (!box) return;
     const go = $("m3Go");

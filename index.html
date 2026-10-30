@@ -105,7 +105,7 @@
     </button>
     <button class="tool-card" data-cat="draglab" type="button">
       <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="15" cy="15" r="5" fill="currentColor"/><path d="M19 19 L31 27" stroke="currentColor" stroke-width="3" stroke-dasharray="4 4"/><circle cx="35" cy="31" r="7" fill="none" stroke="currentColor" stroke-width="3"/><path d="M35 27v8M31 31h8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-      <span class="tool-text"><b>DragLab</b><span>pull any photo into shape &middot; point-drag warp &middot; 100% offline</span></span>
+      <span class="tool-text"><b>DragLab</b><span>pull any photo into shape &middot; point-drag warp + liquify brushes &middot; 100% offline</span></span>
     </button>
     <button class="tool-card" data-cat="cutout" type="button">
       <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="7" width="34" height="34" rx="7" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="5 4"/><circle cx="24" cy="19" r="5.5" fill="currentColor"/><path d="M14.5 35c1.6-5.6 5-8.2 9.5-8.2s7.9 2.6 9.5 8.2" fill="currentColor"/><path d="M38 4l1.1 2.9L42 8l-2.9 1.1L38 12l-1.1-2.9L34 8l2.9-1.1z" fill="currentColor"/></svg>
@@ -311,6 +311,7 @@
     </div>
 
     <div id="pixelSide" class="pixel-side" hidden>
+      <p class="dim" id="pxEmpty">Upload an image to see it here.</p>
       <figure class="px-fig">
         <canvas id="pxOrig"></canvas>
         <figcaption id="pxOrigCap" class="dim">original</figcaption>
@@ -395,7 +396,7 @@
           <p class="dim">Drop a texture here, paste one, or hit <b>Try the sample</b> in the panel.<br>Heal the seams, check the 3&times;3, then export.</p>
         </div>
       </div>
-      <p class="tiler-hint">Seamless Tiler — make any texture repeat without visible seams. Best on organic and soft textures; hard geometric patterns will still show.</p>
+      <p class="tiler-hint">Heal cross-fades a band at each edge into the opposite side — check the Offset view: when the centre cross melts away, the tile repeats clean.</p>
       <p class="tiler-readout dim" id="tlReadout" role="status" aria-live="polite"></p>
     </section>
 
@@ -407,7 +408,7 @@
           <p class="dim">Drop a sprite here, paste one, or hit <b>Try the sample</b> in the panel.<br>Then click a color to swap it, or spin a variant.</p>
         </div>
       </div>
-      <p class="palette-hint">Palette Lab — pull a sprite's colors out, swap them, spin off recolor variants for teams, tiers and skins. All in your browser.</p>
+      <p class="palette-hint">Tolerance sets how far a colour can drift from the one you picked and still swap — pixels inside it swap fully, and a soft band just beyond it blends.</p>
       <p class="palette-readout dim" id="plReadout" role="status" aria-live="polite"></p>
     </section>
 
@@ -419,7 +420,7 @@
           <p class="dim">Drop a GIF here, paste one, or hit <b>Try the sample</b> in the panel.<br>Every frame lands in the sheet, with its timing in the JSON.</p>
         </div>
       </div>
-      <p class="gif-hint">GIF Sheet — turn an animated GIF into a sprite sheet, frames and timings included. Decoded right in your browser; nothing is uploaded.</p>
+      <p class="gif-hint">Frames the file stamps at 0–10 ms are stored as 100 ms in the sheet timings — browsers clamp those the same way.</p>
       <p class="gif-readout dim" id="gfReadout" role="status" aria-live="polite"></p>
     </section>
 
@@ -427,7 +428,7 @@
       <span class="retry-msg" id="retryMsg"></span>
       <div class="retry-actions">
         <button id="retryBtn" class="btn-ghost">Retry with stricter prompt</button>
-        <button id="procBtn" class="btn-ghost">Use Procedural instead</button>
+        <button id="procBtnRetry" class="btn-ghost">Use Procedural instead</button>
       </div>
     </div>
 
@@ -469,7 +470,7 @@
       </div>
       <div class="export-box">
         <div class="field-label">Export</div>
-        <button class="btn bundle" id="dlBundle" disabled>⬇ Download bundle <span class="dim">PNG + GIF + JSON</span></button>
+        <button class="btn bundle" id="dlBundle" disabled>⬇ Export bundle <span class="dim">PNG + GIF + JSON</span></button>
         <button class="btn" id="dlGodot" disabled>Export for Godot <span class="dim">.tres + PNG</span></button>
         <button class="btn" id="dlUnity" disabled>Export for Unity <span class="dim">.anim builder pack</span></button>
         <details class="more-exports">
@@ -477,7 +478,7 @@
           <button class="btn" id="dlSheet" disabled>sprite sheet PNG</button>
           <button class="btn" id="dlJson" disabled>atlas manifest JSON</button>
           <button class="btn ghost" id="dlFrames" disabled>frames (individual PNGs)</button>
-          <button class="btn" id="dlAnim" disabled>Download animation</button>
+          <button class="btn" id="dlAnim" disabled>Export animation</button>
         </details>
         <button class="btn install-app" id="installApp" hidden>📲 Install App</button>
         <div class="export-note">Bundle = sheet PNG + animated GIF preview + manifest (absolute frame rects, fps, loop). Your game reads the rects — never recompute.</div>
@@ -503,7 +504,7 @@
 
       <div class="m3-chainbox">
         <strong>Text to 3D</strong>
-        <p>Describe it — your words go straight to a text-to-3D model and the mesh builds right here. No drawing step, the 2D side is never touched.</p>
+        <p>Describe it — your words go straight to Hunyuan3D-2, a text-to-3D model, and the mesh builds right here. Direct meshes are shape-only (untextured, ready for your own materials); if the direct route is busy, the studio draws an image from your words and builds from that instead.</p>
         <div class="m3-tsteps" id="m3TSteps"><span data-s="1" class="on">1 · Describe</span><span data-s="2">2 · Build mesh</span></div>
         <div class="m3-chain-row"><input type="text" id="m3ChainInput" placeholder="e.g. a tiny robot knight" aria-label="Describe a 3D model"><button type="button" id="m3ChainBtn">Generate 3D model</button></div>
         <img id="m3ChainThumb" class="m3-chain-thumb" alt="The image drawn for your model" hidden>
@@ -681,6 +682,7 @@
           <div class="m3-env-head">Engine Bridge — take this mesh into…</div>
           <div class="m3-bridge-list" id="m3BridgeList"></div>
           <p class="m3-bridge-note">One GLB, every engine. Downloads are named per engine so your project folder stays tidy.</p>
+          <button type="button" class="m3-bridge-guide" id="m3BridgeGuide">Download import guide</button>
         </div>
 
         <div class="m3-docks">
