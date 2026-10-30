@@ -1229,6 +1229,59 @@ body.mode-draglab .mobile-bar { display: none !important; }
 }
 .dl-download:hover { background: var(--violet); color: var(--on-accent); }
 
+/* ---------- v8.3: Cutout Lab AI background removal ---------- */
+/* cutout mode hides the sprite-pipeline controls; Cutout Lab owns the lab */
+.controls.mode-cutout #prompt,
+.controls.mode-cutout label[for="prompt"],
+.controls.mode-cutout #promptPeek,
+.controls.mode-cutout #sourceLabel,
+.controls.mode-cutout #sourceSeg,
+.controls.mode-cutout #keyLabel,
+.controls.mode-cutout #keyRow,
+.controls.mode-cutout #generate,
+.controls.mode-cutout .gen-note { display: none !important; }
+.stage-panel.mode-cutout .canvas-wrap,
+.stage-panel.mode-cutout #retryBar,
+.stage-panel.mode-cutout #framesHead,
+.stage-panel.mode-cutout #framesRow,
+.stage-panel.mode-cutout #splitHead,
+.stage-panel.mode-cutout #splitGrid,
+.stage-panel.mode-cutout .preview-export,
+.stage-panel.mode-cutout .stepper { display: none !important; }
+/* phone sticky generate bar must not fire the sprite pipeline in cutout mode */
+body.mode-cutout .mobile-bar { display: none !important; }
+
+.cutout-side[hidden] { display: none; }
+.cutout-box {
+  position: relative; background: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 12px; text-align: center;
+}
+.cutout-box.co-over { border-color: var(--violet); }
+.cutout-box canvas {
+  max-width: 100%; height: auto; display: block; margin: 0 auto;
+  border-radius: 8px;
+  /* checkerboard so a removed (transparent) background reads at a glance */
+  background: repeating-conic-gradient(var(--panel) 0% 25%, var(--ink) 0% 50%) 0 0 / 24px 24px;
+}
+.cutout-empty {
+  position: absolute; inset: 12px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; padding: 16px;
+  pointer-events: none;
+}
+.cutout-empty[hidden] { display: none; }
+.cutout-empty p { margin: 0; }
+.cutout-hint { text-align: center; font-size: 13px; margin: 10px 0 2px; }
+.cutout-readout {
+  text-align: center; font-family: var(--mono); font-size: 12px;
+  margin: 2px 0 0; min-height: 15px;
+}
+.co-download {
+  border-color: var(--violet); color: var(--violet); font-weight: 700;
+  text-align: center; margin-top: 10px; width: 100%;
+}
+.co-download:hover { background: var(--violet); color: var(--on-accent); }
+.co-download:disabled { opacity: .4; cursor: not-allowed; }
+
 /* ================= v6.16 — lab redesign =================
  * Same backend, friendlier face: controls grouped into numbered step
  * cards, one unified button scale, and frames + preview fused into a

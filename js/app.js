@@ -55,6 +55,7 @@ const state = {
   slicer: null,            // v6.6 dedicated slicer: { sheet, imgW, imgH, rows, cols, mode, bg, knockout, margin, pad, ox, oy, pieces:[{canvas,empty,rect}], selection:[], fps, playback }
   pixelart: null,          // v6.5 image→pixel-art: { src:{data,w,h}, imgW, imgH, w, h, colors, dither, scale, out }
   draglab: null,           // v8.2 DragLab point-drag warp: { src:{data,w,h}, imgW, imgH, points:[{px,py,qx,qy}], name }
+  cutout: null,            // v8.3 Cutout Lab AI bg removal: { src:{data,w,h}, imgW, imgH, matte, threshold, feather, busy, name }
 };
 
 /* non-destructive curation sidecar: order lives here, never in the frames */
@@ -111,6 +112,7 @@ const CATEGORY_DEFAULTS = {
   pixelart:  { w: 64, h: 64, colors: 16 },
   slicer:    { rows: 3, cols: 9, mode: "grid", bg: "black", knockout: true, margin: 0, pad: 0, ox: 0, oy: 0, fps: 8, playback: "loop" },
   draglab:   {},
+  cutout:    {},
 };
 
 const STATE_FPS = { idle: 6, walk: 8, run: 10, jump: 8, attack: 10 };
@@ -191,6 +193,19 @@ function renderParams() {
       <button type="button" class="btn-ghost dl-download" id="dlExport">Export PNG</button>
       <div class="dim" style="margin-top:8px">Click the photo to add a point, drag it to pull the picture. Right-click a point to remove it.</div>`;
     wireDraglab();
+  } else if (cat === "cutout") {
+    const co = coState();
+    box.innerHTML = `
+      <div class="field-label">Cutout Lab <span class="dim">(AI, in your browser)</span></div>
+      <p class="dim" style="margin:2px 0 8px">Cutout Lab — AI background removal that runs in your browser. The model downloads once (about 4.4 MB); your photos never leave your device. No uploads, no login.</p>
+      <div class="row"><button type="button" class="btn-ghost" id="coSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="coPick" style="text-align:center">Upload photo</button><input type="file" id="coFile" accept="image/*" hidden></div>
+      <button type="button" class="btn-ghost co-download" id="coRun">Remove background</button>
+      <div class="field-label">Edge cleanup <span class="dim">(live — no re-run)</span></div>
+      <div class="sl-row"><span class="dim">cut</span><input type="range" id="coThreshold" min="0" max="100" value="${co.threshold}" aria-label="background cut threshold"><span class="sl-val" id="coThresholdVal">${co.threshold}</span></div>
+      <div class="sl-row"><span class="dim">feather</span><input type="range" id="coFeather" min="0" max="24" value="${co.feather}" aria-label="edge feather"><span class="sl-val" id="coFeatherVal">${co.feather}px</span></div>
+      <button type="button" class="btn-ghost co-download" id="coExport">Export PNG</button>
+      <div class="dim" style="margin-top:8px">Model: U-2-Net (u2netp) via the rembg project — Apache-2.0. Runs on your GPU when it can, CPU otherwise.</div>`;
+    wireCutout();
   } else {
     box.innerHTML = `
       <div class="field-label">Effect</div><div class="row"><select id="pType" class="grow">
@@ -207,6 +222,7 @@ function renderParams() {
     pixelart: "not used — upload an image instead",
     slicer: "not used — upload a sheet instead",
     draglab: "not used — upload a photo instead",
+    cutout: "not used — upload a photo instead",
   };
   $("#prompt").placeholder = "e.g. " + prompts[cat];
 
@@ -3537,7 +3553,8 @@ function pxColorLabel(n) {
 function syncToolChrome() {
   const tool = state.category === "pixelart" ? "Pixel Converter"
              : state.category === "slicer" ? "Sprite Slicer"
-             : state.category === "draglab" ? "DragLab" : null;
+             : state.category === "draglab" ? "DragLab"
+             : state.category === "cutout" ? "Cutout Lab" : null;
   document.querySelectorAll(".ctl-group").forEach(g => {
     g.classList.toggle("tool-hidden", !!tool && g.id !== "ctlStep3");
   });
@@ -4616,6 +4633,647 @@ function wireDraglab() {
   syncDraglabMode();
 }
 
+/* ================= v8.3: shared in-browser AI runtime =================
+ * One lazy loader for onnxruntime-web (MIT) plus a session factory, so
+ * every AI lane (Cutout Lab today, the AI Upscaler next) rides the same
+ * plumbing. The runtime script comes from the jsDelivr CDN and is only
+ * fetched the first time an AI tool actually runs — the normal page load
+ * never pays for it. Sessions live in a Web Worker so a heavy model can
+ * never freeze the page; if workers are unavailable the session is made
+ * on the page thread instead. Model bytes are cached in Cache Storage
+ * after the first download, so repeat runs skip the download entirely. */
+
+const AI_ORT_SRC = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js";
+const AI_ORT_DIR = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
+const AI_MODEL_CACHE = "framelab-ai-models-v1";
+
+let aiOrtPromise = null;
+function aiLoadOrt() {
+  if (window.ort) return Promise.resolve(window.ort);
+  if (aiOrtPromise) return aiOrtPromise;
+  aiOrtPromise = new Promise((resolve, reject) => {
+    const tag = document.createElement("script");
+    tag.src = AI_ORT_SRC;
+    tag.async = true;
+    tag.onload = () => {
+      if (window.ort) {
+        try { window.ort.env.wasm.wasmPaths = AI_ORT_DIR; } catch (e) {}
+        resolve(window.ort);
+      } else {
+        aiOrtPromise = null;
+        reject(new Error("AI runtime arrived empty"));
+      }
+    };
+    tag.onerror = () => {
+      aiOrtPromise = null;
+      reject(new Error("couldn't load the AI runtime — check your connection"));
+    };
+    document.head.appendChild(tag);
+  });
+  return aiOrtPromise;
+}
+
+/* fetch a model file once, then serve it from Cache Storage forever.
+ * onProgress(fraction) fires during the network download only. */
+async function aiFetchModel(modelUrl, onProgress) {
+  try {
+    const cache = await caches.open(AI_MODEL_CACHE);
+    const hit = await cache.match(modelUrl);
+    if (hit) {
+      if (onProgress) onProgress(1);
+      return new Uint8Array(await hit.arrayBuffer());
+    }
+  } catch (e) { /* no Cache Storage — plain fetch below */ }
+  const res = await fetch(modelUrl);
+  if (!res.ok) throw new Error("model download failed (HTTP " + res.status + ")");
+  const total = parseInt(res.headers.get("Content-Length") || "0", 10);
+  let bytes;
+  if (res.body && typeof res.body.getReader === "function" && total > 0) {
+    const reader = res.body.getReader();
+    const chunks = [];
+    let got = 0;
+    for (;;) {
+      const part = await reader.read();
+      if (part.done) break;
+      chunks.push(part.value);
+      got += part.value.length;
+      if (onProgress) onProgress(Math.min(1, got / total));
+    }
+    bytes = new Uint8Array(got);
+    let off = 0;
+    for (const c of chunks) { bytes.set(c, off); off += c.length; }
+  } else {
+    bytes = new Uint8Array(await res.arrayBuffer());
+    if (onProgress) onProgress(1);
+  }
+  try {
+    const cache = await caches.open(AI_MODEL_CACHE);
+    await cache.put(modelUrl, new Response(bytes.slice()));
+  } catch (e) { /* caching is a bonus, not a requirement */ }
+  return bytes;
+}
+
+/* The inference worker's source, kept as a string so the site stays a
+ * static file drop (no extra worker file to deploy). The worker owns the
+ * ort sessions — one per model URL — and answers two messages:
+ *   { type:"init", ortSrc, wasmDir, modelUrl, cacheName }
+ *   { type:"run",  modelUrl, feeds:{ name:{ data, dims } } }
+ * Download progress comes back as { type:"progress", value }. */
+function aiWorkerSource() {
+  return `
+"use strict";
+var sessions = {};
+function fetchModel(url, cacheName, say) {
+  return caches.open(cacheName).then(function (cache) {
+    return cache.match(url).then(function (hit) {
+      if (hit) {
+        say(1);
+        return hit.arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
+      }
+      return fetch(url).then(function (res) {
+        if (!res.ok) throw new Error("model download failed (HTTP " + res.status + ")");
+        var total = parseInt(res.headers.get("Content-Length") || "0", 10);
+        var store = function (bytes) {
+          return cache.put(url, new Response(bytes.slice())).catch(function () {}).then(function () { return bytes; });
+        };
+        if (res.body && res.body.getReader && total > 0) {
+          var reader = res.body.getReader();
+          var chunks = [], got = 0;
+          var pump = function () {
+            return reader.read().then(function (part) {
+              if (part.done) {
+                var bytes = new Uint8Array(got), off = 0;
+                chunks.forEach(function (c) { bytes.set(c, off); off += c.length; });
+                return store(bytes);
+              }
+              chunks.push(part.value); got += part.value.length;
+              say(Math.min(1, got / total));
+              return pump();
+            });
+          };
+          return pump();
+        }
+        return res.arrayBuffer().then(function (ab) { say(1); return store(new Uint8Array(ab)); });
+      });
+    });
+  }).catch(function (err) {
+    if (err && /model download failed/.test(err.message)) throw err;
+    return fetch(url).then(function (res) {
+      if (!res.ok) throw new Error("model download failed (HTTP " + res.status + ")");
+      return res.arrayBuffer().then(function (ab) { say(1); return new Uint8Array(ab); });
+    });
+  });
+}
+function makeSession(bytes) {
+  var attempts = [];
+  if (typeof navigator !== "undefined" && navigator.gpu) attempts.push(["webgpu", "wasm"]);
+  attempts.push(["wasm"]);
+  var chain = Promise.reject(new Error("no execution provider tried"));
+  attempts.forEach(function (eps) {
+    chain = chain.catch(function () {
+      return ort.InferenceSession.create(bytes, { executionProviders: eps }).then(function (session) {
+        return { session: session, backend: eps[0] === "webgpu" ? "WebGPU" : "CPU" };
+      });
+    });
+  });
+  return chain;
+}
+self.onmessage = function (e) {
+  var msg = e.data;
+  var fail = function (err) {
+    postMessage({ id: msg.id, ok: false, error: String((err && err.message) || err) });
+  };
+  if (msg.type === "init") {
+    if (sessions[msg.modelUrl]) {
+      var s0 = sessions[msg.modelUrl];
+      postMessage({ id: msg.id, ok: true, backend: s0.backend, inputNames: s0.session.inputNames, outputNames: s0.session.outputNames });
+      return;
+    }
+    importScripts(msg.ortSrc);
+    try { ort.env.wasm.wasmPaths = msg.wasmDir; } catch (err) {}
+    fetchModel(msg.modelUrl, msg.cacheName, function (v) {
+      postMessage({ type: "progress", value: v });
+    }).then(makeSession).then(function (made) {
+      sessions[msg.modelUrl] = made;
+      postMessage({ id: msg.id, ok: true, backend: made.backend, inputNames: made.session.inputNames, outputNames: made.session.outputNames });
+    }).catch(fail);
+  } else if (msg.type === "run") {
+    var entry = sessions[msg.modelUrl];
+    if (!entry) { fail(new Error("AI session not ready")); return; }
+    var feeds = {};
+    Object.keys(msg.feeds).forEach(function (name) {
+      var f = msg.feeds[name];
+      feeds[name] = new ort.Tensor("float32", f.data, f.dims);
+    });
+    entry.session.run(feeds).then(function (out) {
+      var results = {}, transfers = [];
+      Object.keys(out).forEach(function (name) {
+        results[name] = { data: out[name].data, dims: out[name].dims };
+        if (out[name].data && out[name].data.buffer) transfers.push(out[name].data.buffer);
+      });
+      postMessage({ id: msg.id, ok: true, results: results }, transfers);
+    }).catch(fail);
+  }
+};
+`;
+}
+
+let aiWorkerState = null;
+function aiBootWorker() {
+  if (aiWorkerState) return aiWorkerState;
+  const blob = new Blob([aiWorkerSource()], { type: "text/javascript" });
+  const worker = new Worker(URL.createObjectURL(blob));
+  const st = { worker, seq: 0, pending: new Map(), onProgress: null };
+  worker.onmessage = (e) => {
+    const msg = e.data;
+    if (msg.type === "progress") {
+      if (st.onProgress) st.onProgress(msg.value);
+      return;
+    }
+    const p = st.pending.get(msg.id);
+    if (!p) return;
+    st.pending.delete(msg.id);
+    if (msg.ok) p.resolve(msg);
+    else p.reject(new Error(msg.error || "AI worker error"));
+  };
+  worker.onerror = () => {
+    for (const p of st.pending.values()) p.reject(new Error("AI worker crashed"));
+    st.pending.clear();
+    if (aiWorkerState === st) aiWorkerState = null;
+  };
+  aiWorkerState = st;
+  return st;
+}
+
+function aiWorkerSend(st, msg, transfer) {
+  return new Promise((resolve, reject) => {
+    const id = ++st.seq;
+    st.pending.set(id, { resolve, reject });
+    st.worker.postMessage({ ...msg, id }, transfer || []);
+  });
+}
+
+/* aiLoadSession(modelUrl, onProgress) → Promise<{
+ *   backend, inputNames, outputNames,
+ *   run(feeds) → Promise<{ name: { data, dims } }>
+ * }>
+ * Sessions are cached per model URL; a failed load is NOT cached, so the
+ * next call retries cleanly. */
+const aiSessions = {};
+function aiLoadSession(modelUrl, onProgress) {
+  if (aiSessions[modelUrl]) return aiSessions[modelUrl];
+  const absUrl = new URL(modelUrl, location.href).href;
+  const promise = (async () => {
+    try {
+      const st = aiBootWorker();
+      st.onProgress = onProgress || null;
+      let ready;
+      try {
+        ready = await aiWorkerSend(st, {
+          type: "init", ortSrc: AI_ORT_SRC, wasmDir: AI_ORT_DIR,
+          modelUrl: absUrl, cacheName: AI_MODEL_CACHE,
+        });
+      } finally {
+        st.onProgress = null;
+      }
+      return {
+        backend: ready.backend,
+        inputNames: ready.inputNames,
+        outputNames: ready.outputNames,
+        run: (feeds) => {
+          const transfers = [];
+          for (const name of Object.keys(feeds)) {
+            const d = feeds[name].data;
+            if (d && d.buffer) transfers.push(d.buffer);
+          }
+          return aiWorkerSend(st, { type: "run", modelUrl: absUrl, feeds }, transfers)
+            .then((res) => res.results);
+        },
+      };
+    } catch (workerErr) {
+      /* fallback: session on the page thread (no Worker support) */
+      const ort = await aiLoadOrt();
+      const bytes = await aiFetchModel(absUrl, onProgress);
+      let session = null, backend = "CPU";
+      const attempts = [];
+      if (typeof navigator !== "undefined" && navigator.gpu) attempts.push(["webgpu", "wasm"]);
+      attempts.push(["wasm"]);
+      for (const eps of attempts) {
+        try {
+          session = await ort.InferenceSession.create(bytes, { executionProviders: eps });
+          backend = eps[0] === "webgpu" ? "WebGPU" : "CPU";
+          break;
+        } catch (e) { session = null; }
+      }
+      if (!session) throw workerErr;
+      return {
+        backend,
+        inputNames: session.inputNames,
+        outputNames: session.outputNames,
+        run: async (feeds) => {
+          const tensors = {};
+          for (const name of Object.keys(feeds)) {
+            tensors[name] = new ort.Tensor("float32", feeds[name].data, feeds[name].dims);
+          }
+          const out = await session.run(tensors);
+          const results = {};
+          for (const name of Object.keys(out)) {
+            results[name] = { data: out[name].data, dims: out[name].dims };
+          }
+          return results;
+        },
+      };
+    }
+  })();
+  aiSessions[modelUrl] = promise;
+  promise.catch(() => { delete aiSessions[modelUrl]; });
+  return promise;
+}
+
+/* ================= v8.3: Cutout Lab — AI background removal =================
+ * FrameLab's own cutout tool. A small AI segmentation model (u2netp from
+ * the U-2-Net project, Apache-2.0, distributed via the rembg project)
+ * runs entirely on the visitor's device through the shared AI runtime
+ * above: the photo never leaves the browser, there is no server and no
+ * login. Inference runs once per photo and caches a matte; the cut /
+ * feather sliders then re-composite from that matte instantly, with no
+ * further model runs. */
+
+const CUTOUT_MODEL_URL = "assets/models/u2netp.onnx";
+const CO_SIZE = 320; // the model's fixed input frame
+const CO_MEAN = [0.485, 0.456, 0.406];
+const CO_STD = [0.229, 0.224, 0.225];
+
+function coState() {
+  if (!state.cutout) {
+    state.cutout = {
+      src: null, srcCv: null, imgW: 0, imgH: 0, name: "photo",
+      matte: null, threshold: 50, feather: 2, busy: false,
+    };
+  }
+  return state.cutout;
+}
+
+function syncCutoutMode() {
+  const on = state.category === "cutout";
+  const aside = document.querySelector("aside.controls");
+  const stage = document.querySelector("section.stage-panel");
+  if (aside) aside.classList.toggle("mode-cutout", on);
+  if (stage) stage.classList.toggle("mode-cutout", on);
+  document.body.classList.toggle("mode-cutout", on);
+  const sec = $("#cutout");
+  if (sec) sec.hidden = !on;
+  syncToolChrome();
+}
+
+/* build the model's input tensor from a 320×320 RGBA frame: CHW order,
+ * 0..1 range, ImageNet normalization — the U-2-Net recipe. Pure math. */
+function coBuildTensor(px) {
+  const n = CO_SIZE * CO_SIZE;
+  const out = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    for (let c = 0; c < 3; c++) {
+      out[c * n + i] = (px[i * 4 + c] / 255 - CO_MEAN[c]) / CO_STD[c];
+    }
+  }
+  return out;
+}
+
+/* the model returns several maps; the first is the fused saliency map.
+ * Min-max normalize it into a 0..1 matte (the rembg recipe). Pure math. */
+function coNormalizeMatte(raw) {
+  const out = new Float32Array(raw.length);
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] < mn) mn = raw[i];
+    if (raw[i] > mx) mx = raw[i];
+  }
+  const range = mx - mn;
+  if (!(range > 1e-6)) return out; // flat map — nothing stands out
+  for (let i = 0; i < raw.length; i++) out[i] = (raw[i] - mn) / range;
+  return out;
+}
+
+/* apply a matte to source pixels. threshold (0..100) sets the cut point;
+ * feather (0..24) widens the soft band around it. Returns fresh RGBA
+ * bytes — the source is never modified. Pure math: the sliders re-run
+ * this on every input event without touching the model. */
+function coComposite(srcData, matte, threshold, feather) {
+  const out = new Uint8ClampedArray(srcData);
+  const t = threshold / 100;
+  const soft = feather <= 0 ? 0 : 0.02 + (feather / 24) * 0.23;
+  for (let i = 0; i < matte.length; i++) {
+    const m = matte[i];
+    let a;
+    if (soft <= 0) {
+      a = m >= t ? 1 : 0;
+    } else {
+      a = (m - t) / (2 * soft) + 0.5;
+      if (a < 0) a = 0; else if (a > 1) a = 1;
+    }
+    out[i * 4 + 3] = Math.round(srcData[i * 4 + 3] * a);
+  }
+  return out;
+}
+
+/* stretch the 320×320 matte onto the working frame with canvas
+ * smoothing — the bilinear pass doubles as a first edge softener */
+function coUpsampleMatte(matte, w, h) {
+  const small = document.createElement("canvas");
+  small.width = CO_SIZE; small.height = CO_SIZE;
+  const sctx = small.getContext("2d");
+  const id = sctx.createImageData(CO_SIZE, CO_SIZE);
+  for (let i = 0; i < matte.length; i++) {
+    const v = Math.max(0, Math.min(255, Math.round(matte[i] * 255)));
+    id.data[i * 4] = v; id.data[i * 4 + 1] = v; id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255;
+  }
+  sctx.putImageData(id, 0, 0);
+  const big = document.createElement("canvas");
+  big.width = w; big.height = h;
+  const bctx = big.getContext("2d", { willReadFrequently: true });
+  bctx.imageSmoothingEnabled = true;
+  bctx.imageSmoothingQuality = "high";
+  bctx.drawImage(small, 0, 0, w, h);
+  const px = bctx.getImageData(0, 0, w, h).data;
+  const out = new Float32Array(w * h);
+  for (let i = 0; i < out.length; i++) out[i] = px[i * 4] / 255;
+  return out;
+}
+
+function coStatus(msg) {
+  const ro = $("#coReadout");
+  if (ro) ro.textContent = msg;
+}
+
+function coDraw() {
+  const C = coState();
+  const cv = $("#coCanvas");
+  if (!cv || !C.src) return;
+  const ctx = cv.getContext("2d");
+  if (!C.matte) {
+    ctx.drawImage(C.srcCv, 0, 0);
+    coStatus(C.name + " · " + C.src.w + " × " + C.src.h + " · ready — hit Remove background");
+    return;
+  }
+  const out = coComposite(C.src.data, C.matte, C.threshold, C.feather);
+  ctx.putImageData(new ImageData(out, C.src.w, C.src.h), 0, 0);
+  coStatus(C.name + " · " + C.src.w + " × " + C.src.h + " · background removed — tune cut / feather, then Export PNG");
+}
+
+/* the built-in test card: a chunky robot on a simple scene — bold solid
+ * shapes with hard edges, so the subject pops from the backdrop and the
+ * cutout is easy to judge. Drawn in code, zero downloads. */
+function coMakeSample() {
+  const w = 480, h = 360;
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const c = cv.getContext("2d");
+  // sky, sun, hills, ground
+  const sky = c.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, "#7db3e8"); sky.addColorStop(1, "#dceefb");
+  c.fillStyle = sky; c.fillRect(0, 0, w, h);
+  c.fillStyle = "#ffd94d";
+  c.beginPath(); c.arc(410, 56, 29, 0, 7); c.fill();
+  c.fillStyle = "#93cf72";
+  c.beginPath(); c.arc(56, 388, 190, 0, 7); c.fill();
+  c.beginPath(); c.arc(436, 400, 215, 0, 7); c.fill();
+  c.fillStyle = "#79ba58"; c.fillRect(0, 320, w, 40);
+  c.fillStyle = "#22303c";
+  c.font = "700 20px system-ui, sans-serif";
+  c.fillText("beep boop!", 24, 42);
+  // robot — legs + feet
+  c.fillStyle = "#3d4b5c";
+  c.fillRect(208, 262, 24, 44); c.fillRect(248, 262, 24, 44);
+  c.fillStyle = "#222a33";
+  c.fillRect(200, 300, 40, 13); c.fillRect(240, 300, 40, 13);
+  // arms + hands
+  c.fillStyle = "#3d4b5c";
+  c.fillRect(158, 172, 24, 74); c.fillRect(298, 172, 24, 74);
+  c.fillStyle = "#f2b13d";
+  c.beginPath(); c.arc(170, 254, 13, 0, 7); c.fill();
+  c.beginPath(); c.arc(310, 254, 13, 0, 7); c.fill();
+  // body + chest light
+  c.fillStyle = "#e2543e"; c.fillRect(186, 164, 108, 104);
+  c.fillStyle = "#ffd94d"; c.fillRect(214, 192, 52, 42);
+  c.fillStyle = "#22303c"; c.fillRect(232, 206, 16, 14);
+  // neck + head + antenna
+  c.fillStyle = "#3d4b5c"; c.fillRect(227, 146, 26, 20);
+  c.strokeStyle = "#22303c"; c.lineWidth = 5;
+  c.beginPath(); c.moveTo(240, 62); c.lineTo(240, 82); c.stroke();
+  c.fillStyle = "#e2543e";
+  c.beginPath(); c.arc(240, 54, 9, 0, 7); c.fill();
+  c.fillStyle = "#9fb4c7"; c.fillRect(188, 82, 104, 66);
+  c.strokeRect(188, 82, 104, 66);
+  c.strokeRect(186, 164, 108, 104);
+  // eyes + mouth
+  [[218, 110], [262, 110]].forEach(([ex, ey]) => {
+    c.fillStyle = "#fff";
+    c.beginPath(); c.arc(ex, ey, 11, 0, 7); c.fill();
+    c.fillStyle = "#22303c";
+    c.beginPath(); c.arc(ex, ey, 5, 0, 7); c.fill();
+  });
+  c.fillRect(222, 130, 36, 6);
+  return cv;
+}
+
+/* bring an image in (file, paste, drop or the sample) and make it the
+ * working photo. Working size is capped at 1024px on the long edge —
+ * plenty for a matte composite, and the sliders stay instant. */
+function coLoadSource(img, name) {
+  const C = coState();
+  const scale = Math.min(1, 1024 / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const cx2 = cv.getContext("2d", { willReadFrequently: true });
+  cx2.drawImage(img, 0, 0, w, h);
+  const id = cx2.getImageData(0, 0, w, h);
+  C.src = { data: id.data, w, h };
+  C.srcCv = cv;
+  C.imgW = img.width; C.imgH = img.height;
+  C.matte = null;
+  C.name = name || "photo";
+  if (img.close) img.close();
+  const view = $("#coCanvas");
+  if (view) { view.width = w; view.height = h; }
+  const empty = $("#coEmpty");
+  if (empty) empty.hidden = true;
+  coDraw();
+}
+
+async function coLoadFile(file) {
+  if (!file) return;
+  try {
+    const bmp = await createImageBitmap(file);
+    coLoadSource(bmp, file.name || "photo");
+  } catch (err) {
+    coStatus("couldn't read that image — try a PNG or JPG.");
+  }
+}
+
+function coSetBusy(b) {
+  const C = coState();
+  C.busy = b;
+  const run = $("#coRun");
+  if (run) {
+    run.disabled = b;
+    run.textContent = b ? "Working…" : "Remove background";
+  }
+}
+
+async function coRun() {
+  const C = coState();
+  if (!C.src) { coStatus("Load a photo or the sample first."); return; }
+  if (C.busy) return;
+  coSetBusy(true);
+  try {
+    coStatus("Downloading model once… (about 4.4 MB)");
+    const session = await aiLoadSession(CUTOUT_MODEL_URL, (p) => {
+      if (p < 1) coStatus("Downloading model once… " + Math.round(p * 100) + "%");
+    });
+    coStatus("Removing background… (" + session.backend + ")");
+    /* the model eats a square 320×320 frame — the aspect squash is fine
+     * for a saliency matte; it is stretched back onto the real frame */
+    const small = document.createElement("canvas");
+    small.width = CO_SIZE; small.height = CO_SIZE;
+    const sctx = small.getContext("2d", { willReadFrequently: true });
+    sctx.drawImage(C.srcCv, 0, 0, CO_SIZE, CO_SIZE);
+    const tensor = coBuildTensor(sctx.getImageData(0, 0, CO_SIZE, CO_SIZE).data);
+    const feeds = {};
+    feeds[session.inputNames[0]] = { data: tensor, dims: [1, 3, CO_SIZE, CO_SIZE] };
+    const results = await session.run(feeds);
+    const raw = results[session.outputNames[0]];
+    if (!raw || !raw.data) throw new Error("the model returned nothing");
+    let matte = coNormalizeMatte(raw.data);
+    if (matte.length === CO_SIZE * CO_SIZE) {
+      matte = coUpsampleMatte(matte, C.src.w, C.src.h);
+    }
+    C.matte = matte;
+    coDraw();
+  } catch (err) {
+    coStatus("Cutout failed: " + (err && err.message ? err.message : err));
+  }
+  coSetBusy(false);
+}
+
+function coExportPNG() {
+  const C = coState();
+  if (!C.src) { coStatus("Load a photo or the sample first."); return; }
+  if (!C.matte) { coStatus("Remove the background first."); return; }
+  const cv = document.createElement("canvas");
+  cv.width = C.src.w; cv.height = C.src.h;
+  const out = coComposite(C.src.data, C.matte, C.threshold, C.feather);
+  cv.getContext("2d").putImageData(new ImageData(out, C.src.w, C.src.h), 0, 0);
+  downloadCanvas(cv, "m4ster-cutout-" + C.src.w + "x" + C.src.h + ".png");
+}
+
+/* ---------------- Cutout Lab wiring ---------------- */
+
+let coStaticWired = false;
+
+function coWireStage() {
+  // drag & drop onto the stage box
+  const box = $("#coStageBox");
+  if (box) {
+    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.add("co-over");
+    }));
+    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.remove("co-over");
+    }));
+    box.addEventListener("drop", (e) => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) coLoadFile(f);
+    });
+  }
+  // paste an image while the Cutout lane is open
+  document.addEventListener("paste", (e) => {
+    if (state.category !== "cutout") return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.type && it.type.indexOf("image/") === 0) {
+        const f = it.getAsFile();
+        if (f) { coLoadFile(f); e.preventDefault(); }
+        return;
+      }
+    }
+  });
+}
+
+function wireCutout() {
+  $("#coSample").onclick = () => coLoadSource(coMakeSample(), "sample robot");
+  $("#coPick").onclick = () => $("#coFile").click();
+  $("#coFile").onchange = (e) => {
+    coLoadFile(e.target.files[0]);
+    e.target.value = "";
+  };
+  $("#coRun").onclick = coRun;
+  $("#coExport").onclick = coExportPNG;
+  const th = $("#coThreshold"), fe = $("#coFeather");
+  if (th) th.oninput = () => {
+    const C = coState();
+    C.threshold = +th.value;
+    const v = $("#coThresholdVal");
+    if (v) v.textContent = th.value;
+    if (C.matte) coDraw();
+  };
+  if (fe) fe.oninput = () => {
+    const C = coState();
+    C.feather = +fe.value;
+    const v = $("#coFeatherVal");
+    if (v) v.textContent = fe.value + "px";
+    if (C.matte) coDraw();
+  };
+  if (!coStaticWired) {
+    coStaticWired = true;
+    coWireStage();
+  }
+  syncCutoutMode();
+}
+
 /* ================= wiring ================= */
 
 function init() {
@@ -4628,6 +5286,7 @@ function init() {
   syncPixelMode();
   syncSlicerMode();
   syncDraglabMode();
+  syncCutoutMode();
 
   const toolBackBtn = document.getElementById("toolBack");
   if (toolBackBtn) toolBackBtn.onclick = () => {
@@ -4646,6 +5305,7 @@ function init() {
       syncPixelMode();
       syncSlicerMode();
       syncDraglabMode();
+      syncCutoutMode();
       syncAiModelUI();
     };
   });
@@ -5344,6 +6004,7 @@ function initV6() {
       syncPixelMode();
       syncSlicerMode();
       syncDraglabMode();
+      syncCutoutMode();
       syncAiModelUI();
       document.getElementById("tool").scrollIntoView({ behavior: "smooth", block: "start" });
     };
@@ -7153,7 +7814,8 @@ function wire3DLab() {
   function wizardOn() {
     return !(document.body.classList.contains("mode-pixelart") ||
              document.body.classList.contains("mode-slicer") ||
-             document.body.classList.contains("mode-draglab"));
+             document.body.classList.contains("mode-draglab") ||
+             document.body.classList.contains("mode-cutout"));
   }
   function render() {
     var on = wizardOn();

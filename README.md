@@ -27,6 +27,16 @@ sheet PNG plus an atlas manifest JSON your game can read directly.
 
 ![Text to 3D — words straight to a mesh](assets/framelab-3d-mesh.gif)
 
+## v8.3 — Cutout Lab: AI background removal, in your browser
+
+A new standalone tool next to the Slicer, Pixel Converter and DragLab:
+drop in any photo and Cutout Lab removes its background — the AI runs
+100% in your browser (onnxruntime-web, WebGPU when available, WASM
+otherwise). The model downloads once (about 4.4 MB) and is cached;
+photos never leave the device. No uploads, no login, no server. Cut and
+feather sliders refine the edge live, then export a transparent PNG.
+Model credit: U-2-Net (`u2netp`) via the rembg project — Apache-2.0.
+
 ## v8.1 — Text to 3D goes direct
 
 The Text tab no longer draws a 2D image first. Your words go straight to
