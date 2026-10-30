@@ -1,7 +1,7 @@
 /* m4ster FrameLab service worker — offline cache, network-first for code
  * (test builds change often: a cache-first CSS/JS means visitors keep an
- * old build forever — his 2026-10-20 screenshots showed a fixed bug
- * because the old stylesheet was served from this cache). */
+ * old build forever — screenshots on 2026-10-20 showed a fixed bug
+ * returning because the old stylesheet was served from this cache). */
 var CACHE = "framelab-v5";
 var ASSETS = [
   "/", "/index.html",

@@ -30,7 +30,7 @@
 }
 
 /* v6.3: default 115% zoom — the site is designed to be viewed slightly
- * enlarged (his call: "looks good zoomed in, make it default").
+ * enlarged.
  * zoom re-lays-out like browser zoom, so media queries still respond. */
 html { zoom: 1.15; }
 
@@ -1347,7 +1347,7 @@ body.mode-slicer .mobile-bar { display: none !important; }
   letter-spacing: .18em; text-transform: uppercase; color: var(--violet);
 }
 .ctl-group { position: relative; }
-/* step rail (his 2026-10-20 call: keep the line, move it LEFT): one
+/* step rail (2026-10-20: keep the line, move it LEFT): one
    continuous line down the left edge of the step cards, Step 1 → Step 5.
    It sits at left:6px — in the card's border strip, left of ALL content
    (content starts at the 14px padding) — so it never crosses a button. */
@@ -1480,11 +1480,11 @@ body.dim-3d .fresh-lab { display: none; }
   background: var(--ink); border: 1px solid var(--line); border-radius: 14px;
 }
 .m3-viewer[hidden] { display: none; }
-/* ============ step wizard (his design, 2026-10-20) ============
+/* ============ step wizard (2026-10-20) ============
  * The 5 steps live in ONE frame as pages: dots on top (clickable, filled =
  * current), one step visible at a time, Back / Next at the bottom, Generate
- * waits on the last step. Kills the 2400px skyscraper frame he flagged
- * ("left one very long, right one very square"). Auto-off in pixelart /
+ * waits on the last step. Kills the 2400px skyscraper frame (the left side
+ * was very long, the right side very square). Auto-off in pixelart /
  * slicer modes — those keep their stacked layout. */
 .wiz-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .wiz-dots { display: flex; gap: 9px; }
@@ -1495,7 +1495,7 @@ body.dim-3d .fresh-lab { display: none; }
 }
 .wiz-dot:hover { transform: scale(1.25); }
 .wiz-dot.done { background: color-mix(in srgb, var(--text) 35%, transparent); }
-/* current step = WHITE, never the theme accent (his call, 2026-10-20);
+/* current step = WHITE, never the theme accent (2026-10-20);
    the soft text-colored ring keeps it visible on the light Porcelain too */
 .wiz-dot.now {
   background: #fff; border-color: #fff;
@@ -1563,8 +1563,8 @@ body.dim-3d .fresh-lab { display: none; }
   .flip-btn { flex: 1; min-height: 40px; }
 }
 
-/* ---------- 3D depth pass (his standard, set 2026-10-20: "website itself
- * should feel 3d — element have 3d depth") — layered gradients, lit top
+/* ---------- 3D depth pass (standard, set 2026-10-20: the website itself
+ * should feel 3D — elements have 3D depth) — layered gradients, lit top
  * edges, shaded bottoms, raised actives, recessed tracks, tactile press.
  * Theme-variable based: reads on Porcelain and every dark theme. ---------- */
 .dim-flip {
@@ -1611,7 +1611,7 @@ body.dim-3d .fresh-lab { display: none; }
   box-shadow: 0 8px 22px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.06);
 }
 
-/* ================= TEST: bottom band — visualizer + downloads centred (his order 2026-10-20)
+/* ================= TEST: bottom band — visualizer + downloads centred (2026-10-20)
    The viz panel leaves the right column and spans the whole tool as one
    bottom band: everything centred, preview + export side by side in the
    middle, all visible together. ================= */
@@ -1649,7 +1649,7 @@ body.dim-3d .fresh-lab { display: none; }
 }
 
 /* ============ TEST: Meshy-style 3D Studio ============
- * Copied 1:1 in structure from the Meshy studio (his 2026-10-20 drop):
+ * Copied 1:1 in structure from the Meshy studio (reference, 2026-10-20):
  * dark left control rail + viewer stage with toolbar, stats chips,
  * environment popup and floating action docks. Dark in every theme,
  * like the reference. Free-forever: no credits, no crowns, no paywall. */
@@ -2054,7 +2054,7 @@ body.dim-3d .fresh-lab { display: none; }
 .faq summary{cursor:pointer;font-weight:600;font-size:14.5px}
 .faq p{font-size:13.5px;color:#b9b9c4;line-height:1.55;margin:9px 0 3px}
 
-/* ===== separation + compact pass (2026-10-21, his order) =====
+/* ===== separation + compact pass (2026-10-21) =====
  * The flip is the split: each side shows ONLY its own sections, at one
  * smaller scale that matches the tool area. No more fused 2-in-1 page. */
 body.dim-3d #hero, body.dim-3d #catCards, body.dim-3d #toolsStrip,
@@ -2105,7 +2105,7 @@ body:not(.dim-3d) #labSkills { display: none !important; }
   .m3-studio { height: calc(100dvh - 196px); min-height: 430px; }
   .m3-rail { overflow-y: auto; max-height: 100%; }
   /* stage is FIXED size, sized to its content — never stretched to the
-   * rail's height, never viewport-tall (his 2026-10-26 call). The rail
+   * rail's height, never viewport-tall (2026-10-26). The rail
    * keeps its viewport fit + internal scroll; the stage does not. */
   .m3-stage { height: auto; min-height: 480px; align-self: start; }
 }

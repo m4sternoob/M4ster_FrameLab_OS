@@ -646,7 +646,7 @@ async function aiGenerateWith(id, prompt, w, h, onStatus) {
 }
 
 /* AUTO chain — Phase 1 trial order (HUB roadmap, 2026-10-20; supersedes
- * the earlier 16-model ranked chain by his latest directive — the manual
+ * the earlier 16-model ranked chain — the manual
  * dropdown still carries the full roster). Saved FLUX keys slot in near
  * the front. */
 const AI_AUTO_CHAIN = [
@@ -6700,7 +6700,7 @@ function wire3DLab() {
   });
 }
 
-/* ============ step wizard (test build, his design 2026-10-20) ============
+/* ============ step wizard (test build, 2026-10-20) ============
  * The 5 ctl-groups become pages inside ONE frame: clickable progress dots
  * on top, Back / Next at the bottom, Generate only on the last step.
  * Auto-off while pixelart / slicer mode owns the panel (body class watch —
@@ -7111,7 +7111,7 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       /* faces die on Smart: it routes AUTO to InstantMesh first. Text
        * prompts are characters and detailed objects — build them on
-       * High Detail. The toggle is right there if he wants Smart. */
+       * High Detail. The toggle is right there to switch to Smart. */
       if (window.M3_SMART_TOPO) { const hd = $("m3TopoDetail"); if (hd) hd.click(); }
       t3dStep(2);
       const shaped = text + ", full body, entire figure visible with empty margin around it, head large and clearly detailed, standing straight facing the camera, plain solid white background, studio product photography, sharp focus, no text";
