@@ -54,6 +54,7 @@ const state = {
   strict: false,           // retry mode: appends the strict isolation clause to prompts
   slicer: null,            // v6.6 dedicated slicer: { sheet, imgW, imgH, rows, cols, mode, bg, knockout, margin, pad, ox, oy, pieces:[{canvas,empty,rect}], selection:[], fps, playback }
   pixelart: null,          // v6.5 image→pixel-art: { src:{data,w,h}, imgW, imgH, w, h, colors, dither, scale, out }
+  draglab: null,           // v8.2 DragLab point-drag warp: { src:{data,w,h}, imgW, imgH, points:[{px,py,qx,qy}], name }
 };
 
 /* non-destructive curation sidecar: order lives here, never in the frames */
@@ -109,6 +110,7 @@ const CATEGORY_DEFAULTS = {
   effect:    { type: "explosion", frames: 8 },
   pixelart:  { w: 64, h: 64, colors: 16 },
   slicer:    { rows: 3, cols: 9, mode: "grid", bg: "black", knockout: true, margin: 0, pad: 0, ox: 0, oy: 0, fps: 8, playback: "loop" },
+  draglab:   {},
 };
 
 const STATE_FPS = { idle: 6, walk: 8, run: 10, jump: 8, attack: 10 };
@@ -180,6 +182,15 @@ function renderParams() {
         ${[["loop", "Loop"], ["once", "Once"], ["pingpong", "Ping-pong"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === sl.playback ? " active" : ""}" data-playback="${v}">${lbl}</button>`).join("")}
       </div><button type="button" class="btn-ghost sl-download" id="slDownload" disabled>Download animation <span class="dim">PNG + JSON</span></button><button type="button" class="btn-ghost sl-download" id="slCells" disabled>Download cells <span class="dim">individual PNGs</span></button><div class="dim">100% offline.</div>`;
     wireSlicer();
+  } else if (cat === "draglab") {
+    box.innerHTML = `
+      <div class="field-label">DragLab <span class="dim">(100% offline)</span></div>
+      <p class="dim" style="margin:2px 0 8px">DragLab — pull any photo into shape. Click, drag, done. Runs 100% in your browser: no AI model, no uploads, no login.</p>
+      <div class="row"><button type="button" class="btn-ghost" id="dlSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="dlPick" style="text-align:center">Upload photo</button><input type="file" id="dlFile" accept="image/*" hidden></div>
+      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="dlUndo">Undo point</button><button type="button" class="btn-ghost" id="dlReset">Reset</button></div>
+      <button type="button" class="btn-ghost dl-download" id="dlExport">Export PNG</button>
+      <div class="dim" style="margin-top:8px">Click the photo to add a point, drag it to pull the picture. Right-click (or long-press) a point to remove it.</div>`;
+    wireDraglab();
   } else {
     box.innerHTML = `
       <div class="field-label">Effect</div><div class="row"><select id="pType" class="grow">
@@ -195,6 +206,7 @@ function renderParams() {
     effect: "fiery explosion with smoke",
     pixelart: "not used — upload an image instead",
     slicer: "not used — upload a sheet instead",
+    draglab: "not used — upload a photo instead",
   };
   $("#prompt").placeholder = "e.g. " + prompts[cat];
 
@@ -3524,7 +3536,8 @@ function pxColorLabel(n) {
  * header (no step number), and a back button returns to the generator. */
 function syncToolChrome() {
   const tool = state.category === "pixelart" ? "Pixel Converter"
-             : state.category === "slicer" ? "Sprite Slicer" : null;
+             : state.category === "slicer" ? "Sprite Slicer"
+             : state.category === "draglab" ? "DragLab" : null;
   document.querySelectorAll(".ctl-group").forEach(g => {
     g.classList.toggle("tool-hidden", !!tool && g.id !== "ctlStep3");
   });
@@ -4195,6 +4208,417 @@ function wireSlicer() {
   syncSlicerMode();
 }
 
+/* ================= v8.2: DragLab — point-drag photo warp =================
+ * FrameLab's own warp tool: click a photo to drop points, drag them, and
+ * the picture pulls along. The math is Moving Least Squares (similarity
+ * flavour, Schaefer et al. 2006) — a classic image-deformation recipe,
+ * implemented here from scratch. No model, no server, no upload: the
+ * photo never leaves the visitor's browser. */
+
+function dlState() {
+  if (!state.draglab) {
+    state.draglab = { src: null, srcCv: null, imgW: 0, imgH: 0, points: [], name: "photo" };
+  }
+  return state.draglab;
+}
+
+function syncDraglabMode() {
+  const on = state.category === "draglab";
+  const aside = document.querySelector("aside.controls");
+  const stage = document.querySelector("section.stage-panel");
+  if (aside) aside.classList.toggle("mode-draglab", on);
+  if (stage) stage.classList.toggle("mode-draglab", on);
+  document.body.classList.toggle("mode-draglab", on);
+  const sec = $("#draglab");
+  if (sec) sec.hidden = !on;
+  syncToolChrome();
+}
+
+/* Moving Least Squares, similarity flavour — as an inverse map.
+ * For an OUTPUT pixel (x, y) this finds where it came from in the source.
+ * Each point has a home (px, py) and a dragged-to spot (qx, qy); swapping
+ * the two turns the forward deformation into a backward lookup, which is
+ * what a renderer needs (no holes in the output). */
+function dlMapPoint(x, y, pts) {
+  const n = pts.length;
+  if (n === 0) return [x, y];
+  if (n === 1) {
+    // a single point can only translate the whole picture
+    return [x + pts[0].px - pts[0].qx, y + pts[0].py - pts[0].qy];
+  }
+  // weights: closer points pull harder (1 / distance^2)
+  const w = new Array(n);
+  let wSum = 0, pCx = 0, pCy = 0, qCx = 0, qCy = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = x - pts[i].qx, dy = y - pts[i].qy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < 0.01) return [pts[i].px, pts[i].py]; // right on a point: exact home
+    w[i] = 1 / d2;
+    wSum += w[i];
+    pCx += w[i] * pts[i].px; pCy += w[i] * pts[i].py;
+    qCx += w[i] * pts[i].qx; qCy += w[i] * pts[i].qy;
+  }
+  pCx /= wSum; pCy /= wSum; qCx /= wSum; qCy /= wSum;
+  // best-fit similarity (uniform scale + rotation) from the dragged
+  // frame back to the home frame, in least-squares terms
+  let mu = 0, a = 0, b = 0;
+  for (let i = 0; i < n; i++) {
+    const qx = pts[i].qx - qCx, qy = pts[i].qy - qCy;
+    const px = pts[i].px - pCx, py = pts[i].py - pCy;
+    mu += w[i] * (qx * qx + qy * qy);
+    a += w[i] * (qx * px + qy * py);
+    b += w[i] * (qx * py - qy * px);
+  }
+  if (mu < 1e-9) return [x + pCx - qCx, y + pCy - qCy]; // all points stacked: translate
+  a /= mu; b /= mu;
+  const vx = x - qCx, vy = y - qCy;
+  return [pCx + a * vx - b * vy, pCy + b * vx + a * vy];
+}
+
+/* bilinear sample of the source pixels at (sx, sy), written to od[o..o+3] */
+function dlSample(sd, W, H, sx, sy, od, o) {
+  if (sx < 0) sx = 0; else if (sx > W - 1) sx = W - 1;
+  if (sy < 0) sy = 0; else if (sy > H - 1) sy = H - 1;
+  const x0 = Math.floor(sx), y0 = Math.floor(sy);
+  const x1 = x0 + 1 < W ? x0 + 1 : x0;
+  const y1 = y0 + 1 < H ? y0 + 1 : y0;
+  const fx = sx - x0, fy = sy - y0;
+  const i00 = (y0 * W + x0) * 4, i10 = (y0 * W + x1) * 4;
+  const i01 = (y1 * W + x0) * 4, i11 = (y1 * W + x1) * 4;
+  for (let c = 0; c < 4; c++) {
+    const top = sd[i00 + c] * (1 - fx) + sd[i10 + c] * fx;
+    const bot = sd[i01 + c] * (1 - fx) + sd[i11 + c] * fx;
+    od[o + c] = top * (1 - fy) + bot * fy;
+  }
+}
+
+/* draw the warped photo into ctx (points are NOT drawn here, so Export
+ * reuses this as-is). The backward map is evaluated on a coarse grid and
+ * interpolated — per-pixel MLS at full size would drag too slowly. */
+function dlRenderWarp(ctx) {
+  const D = dlState();
+  const src = D.src, pts = D.points;
+  const W = src.w, H = src.h;
+  const displaced = pts.some(p => p.qx !== p.px || p.qy !== p.py);
+  if (!pts.length || !displaced) { ctx.drawImage(D.srcCv, 0, 0); return; }
+  const step = Math.max(1, Math.round(Math.max(W, H) / 300));
+  const gw = Math.floor(W / step) + 1, gh = Math.floor(H / step) + 1;
+  const mapX = new Float32Array(gw * gh), mapY = new Float32Array(gw * gh);
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const m = dlMapPoint(gx * step, gy * step, pts);
+      mapX[gy * gw + gx] = m[0];
+      mapY[gy * gw + gx] = m[1];
+    }
+  }
+  const out = ctx.createImageData(W, H);
+  const od = out.data, sd = src.data;
+  for (let y = 0; y < H; y++) {
+    const gyf = y / step;
+    const gy0 = Math.min(Math.floor(gyf), gh - 2), fy = gyf - gy0;
+    const row0 = gy0 * gw, row1 = row0 + gw;
+    for (let x = 0; x < W; x++) {
+      const gxf = x / step;
+      const gx0 = Math.min(Math.floor(gxf), gw - 2), fx = gxf - gx0;
+      const i00 = row0 + gx0, i10 = i00 + 1, i01 = row1 + gx0, i11 = i01 + 1;
+      const sx = (mapX[i00] * (1 - fx) + mapX[i10] * fx) * (1 - fy)
+               + (mapX[i01] * (1 - fx) + mapX[i11] * fx) * fy;
+      const sy = (mapY[i00] * (1 - fx) + mapY[i10] * fx) * (1 - fy)
+               + (mapY[i01] * (1 - fx) + mapY[i11] * fx) * fy;
+      dlSample(sd, W, H, sx, sy, od, (y * W + x) * 4);
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
+/* numbered dots over the photo; a dragged point keeps a tether + ghost
+ * at its home spot so the pull reads clearly */
+function dlDrawPoints(ctx) {
+  const D = dlState();
+  let accent = "#22c55e";
+  try { accent = getComputedStyle(document.documentElement).getPropertyValue("--violet").trim() || accent; } catch (e) {}
+  const s = Math.max(6, Math.min(D.src.w, D.src.h) / 58);
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  D.points.forEach((p, i) => {
+    if (p.qx !== p.px || p.qy !== p.py) {
+      ctx.strokeStyle = accent; ctx.globalAlpha = 0.55;
+      ctx.lineWidth = Math.max(1, s / 4);
+      ctx.beginPath(); ctx.moveTo(p.px, p.py); ctx.lineTo(p.qx, p.qy); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "rgba(255,255,255,.8)";
+      ctx.beginPath(); ctx.arc(p.px, p.py, s * 0.35, 0, 7); ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(p.qx, p.qy, s, 0, 7);
+    ctx.fillStyle = accent; ctx.fill();
+    ctx.lineWidth = Math.max(1.5, s / 3); ctx.strokeStyle = "#fff"; ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.font = "700 " + Math.round(s * 1.05) + "px system-ui, sans-serif";
+    ctx.fillText(String(i + 1), p.qx, p.qy + 0.5);
+  });
+  ctx.restore();
+}
+
+function dlDraw() {
+  const D = dlState();
+  const cv = $("#dlCanvas");
+  if (!cv || !D.src) return;
+  const ctx = cv.getContext("2d");
+  dlRenderWarp(ctx);
+  dlDrawPoints(ctx);
+  const ro = $("#dlReadout");
+  if (ro) {
+    ro.textContent = D.name + " · " + D.src.w + " × " + D.src.h
+      + (D.points.length
+        ? " · " + D.points.length + (D.points.length === 1 ? " point" : " points")
+        : " · no points yet — click the photo");
+  }
+}
+
+let dlDrawQueued = false;
+function dlQueueDraw() {
+  if (dlDrawQueued) return;
+  dlDrawQueued = true;
+  requestAnimationFrame(() => { dlDrawQueued = false; dlDraw(); });
+}
+
+/* the built-in test card: graph paper (so the warp is easy to see) plus
+ * a big simple face to pull around — drawn in code, zero downloads */
+function dlMakeSample() {
+  const w = 480, h = 360;
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const c = cv.getContext("2d");
+  c.fillStyle = "#f6f2e4"; c.fillRect(0, 0, w, h);
+  c.strokeStyle = "rgba(70,90,130,.20)"; c.lineWidth = 1;
+  c.beginPath();
+  for (let x = 0; x <= w; x += 24) { c.moveTo(x + .5, 0); c.lineTo(x + .5, h); }
+  for (let y = 0; y <= h; y += 24) { c.moveTo(0, y + .5); c.lineTo(w, y + .5); }
+  c.stroke();
+  const cx = 240, cy = 186, r = 104;
+  c.lineWidth = 5; c.strokeStyle = "#5b4632";
+  // ears
+  c.fillStyle = "#ffd9a0";
+  c.beginPath(); c.arc(cx - r, cy + 4, 20, 0, 7); c.fill(); c.stroke();
+  c.beginPath(); c.arc(cx + r, cy + 4, 20, 0, 7); c.fill(); c.stroke();
+  // head
+  c.beginPath(); c.arc(cx, cy, r, 0, 7); c.fill(); c.stroke();
+  // hair cap
+  c.fillStyle = "#8a5a24";
+  c.beginPath(); c.arc(cx, cy - 4, r, Math.PI * 1.06, Math.PI * 1.94); c.closePath(); c.fill();
+  // eyes
+  [[cx - 38, cy - 14], [cx + 38, cy - 14]].forEach(([ex, ey]) => {
+    c.fillStyle = "#fff";
+    c.lineWidth = 3;
+    c.beginPath(); c.arc(ex, ey, 15, 0, 7); c.fill(); c.stroke();
+    c.fillStyle = "#33302a";
+    c.beginPath(); c.arc(ex, ey, 6.5, 0, 7); c.fill();
+    c.fillStyle = "#fff";
+    c.beginPath(); c.arc(ex + 2, ey - 2, 2, 0, 7); c.fill();
+  });
+  // brows
+  c.strokeStyle = "#5b4632"; c.lineWidth = 4; c.lineCap = "round";
+  c.beginPath(); c.moveTo(cx - 52, cy - 40); c.lineTo(cx - 24, cy - 44); c.stroke();
+  c.beginPath(); c.moveTo(cx + 24, cy - 44); c.lineTo(cx + 52, cy - 40); c.stroke();
+  // nose + cheeks + smile
+  c.lineWidth = 3.5;
+  c.beginPath(); c.moveTo(cx, cy); c.quadraticCurveTo(cx + 6, cy + 10, cx - 2, cy + 16); c.stroke();
+  c.fillStyle = "rgba(244,110,110,.45)";
+  c.beginPath(); c.arc(cx - 56, cy + 30, 13, 0, 7); c.fill();
+  c.beginPath(); c.arc(cx + 56, cy + 30, 13, 0, 7); c.fill();
+  c.strokeStyle = "#5b4632"; c.lineWidth = 5;
+  c.beginPath(); c.arc(cx, cy + 22, 44, Math.PI * 0.18, Math.PI * 0.82); c.stroke();
+  c.fillStyle = "#5b4632";
+  c.font = "700 19px system-ui, sans-serif";
+  c.textAlign = "center";
+  c.fillText("pull my cheeks!", cx, 338);
+  return cv;
+}
+
+/* bring an image in (file, paste, drop or the sample) and make it the
+ * working photo. Working size is capped at 640px on the long edge so
+ * dragging stays smooth; the original dimensions are kept for the label. */
+function dlLoadSource(img, name) {
+  const D = dlState();
+  const scale = Math.min(1, 640 / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const cx2 = cv.getContext("2d", { willReadFrequently: true });
+  cx2.drawImage(img, 0, 0, w, h);
+  const id = cx2.getImageData(0, 0, w, h);
+  D.src = { data: id.data, w, h };
+  D.srcCv = cv;
+  D.imgW = img.width; D.imgH = img.height;
+  D.points = [];
+  D.name = name || "photo";
+  if (img.close) img.close();
+  const view = $("#dlCanvas");
+  if (view) { view.width = w; view.height = h; }
+  const empty = $("#dlEmpty");
+  if (empty) empty.hidden = true;
+  dlDraw();
+}
+
+async function dlLoadFile(file) {
+  if (!file) return;
+  try {
+    const bmp = await createImageBitmap(file);
+    dlLoadSource(bmp, file.name || "photo");
+  } catch (err) {
+    const ro = $("#dlReadout");
+    if (ro) ro.textContent = "couldn't read that image — try a PNG or JPG.";
+  }
+}
+
+function dlExportPNG() {
+  const D = dlState();
+  if (!D.src) {
+    const ro = $("#dlReadout");
+    if (ro) ro.textContent = "Load a photo or the sample first.";
+    return;
+  }
+  const cv = document.createElement("canvas");
+  cv.width = D.src.w; cv.height = D.src.h;
+  dlRenderWarp(cv.getContext("2d"));
+  downloadCanvas(cv, "m4ster-draglab-" + D.src.w + "x" + D.src.h + ".png");
+}
+
+/* ---------------- DragLab wiring ---------------- */
+
+let dlDrag = null;        // index of the point being dragged, or null
+let dlPressTimer = 0;     // long-press-to-remove timer
+let dlStaticWired = false;
+
+function dlCanvasPos(e) {
+  const cv = $("#dlCanvas");
+  const r = cv.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) * cv.width / r.width,
+    y: (e.clientY - r.top) * cv.height / r.height,
+  };
+}
+
+function dlHitPoint(x, y) {
+  const D = dlState();
+  if (!D.src) return -1;
+  const tol = Math.max(12, Math.min(D.src.w, D.src.h) / 26);
+  let best = -1, bestD = tol;
+  D.points.forEach((p, i) => {
+    const d = Math.hypot(p.qx - x, p.qy - y);
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return best;
+}
+
+function dlWireCanvas() {
+  const cv = $("#dlCanvas");
+  if (!cv) return;
+  cv.addEventListener("pointerdown", (e) => {
+    const D = dlState();
+    if (!D.src || e.button === 2) return;
+    const pos = dlCanvasPos(e);
+    let idx = dlHitPoint(pos.x, pos.y);
+    const isNew = idx < 0;
+    if (isNew) {
+      D.points.push({ px: pos.x, py: pos.y, qx: pos.x, qy: pos.y });
+      idx = D.points.length - 1;
+    }
+    dlDrag = idx;
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    clearTimeout(dlPressTimer);
+    if (!isNew) {
+      // long-press an existing point (without moving) removes it
+      dlPressTimer = setTimeout(() => {
+        if (dlDrag === idx) {
+          D.points.splice(idx, 1);
+          dlDrag = null;
+          dlQueueDraw();
+        }
+      }, 650);
+    }
+    dlQueueDraw();
+    e.preventDefault();
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (dlDrag === null) return;
+    const D = dlState();
+    const p = D.points[dlDrag];
+    if (!p) { dlDrag = null; return; }
+    clearTimeout(dlPressTimer);
+    const pos = dlCanvasPos(e);
+    const mx = D.src.w / 4, my = D.src.h / 4; // a little room past the edges
+    p.qx = Math.max(-mx, Math.min(D.src.w + mx, pos.x));
+    p.qy = Math.max(-my, Math.min(D.src.h + my, pos.y));
+    dlQueueDraw();
+  });
+  const endDrag = () => { clearTimeout(dlPressTimer); dlDrag = null; };
+  cv.addEventListener("pointerup", endDrag);
+  cv.addEventListener("pointercancel", endDrag);
+  cv.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    const D = dlState();
+    if (!D.src) return;
+    const pos = dlCanvasPos(e);
+    const idx = dlHitPoint(pos.x, pos.y);
+    if (idx >= 0) { D.points.splice(idx, 1); dlQueueDraw(); }
+  });
+  // drag & drop onto the stage box
+  const box = $("#dlStageBox");
+  if (box) {
+    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.add("dl-over");
+    }));
+    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.remove("dl-over");
+    }));
+    box.addEventListener("drop", (e) => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) dlLoadFile(f);
+    });
+  }
+  // paste an image while the DragLab lane is open
+  document.addEventListener("paste", (e) => {
+    if (state.category !== "draglab") return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.type && it.type.indexOf("image/") === 0) {
+        const f = it.getAsFile();
+        if (f) { dlLoadFile(f); e.preventDefault(); }
+        return;
+      }
+    }
+  });
+}
+
+function wireDraglab() {
+  $("#dlSample").onclick = () => dlLoadSource(dlMakeSample(), "sample face");
+  $("#dlPick").onclick = () => $("#dlFile").click();
+  $("#dlFile").onchange = (e) => {
+    dlLoadFile(e.target.files[0]);
+    e.target.value = "";
+  };
+  $("#dlUndo").onclick = () => {
+    const D = dlState();
+    if (D.points.length) { D.points.pop(); dlQueueDraw(); }
+  };
+  $("#dlReset").onclick = () => {
+    const D = dlState();
+    D.points = [];
+    dlQueueDraw();
+  };
+  $("#dlExport").onclick = dlExportPNG;
+  if (!dlStaticWired) {
+    dlStaticWired = true;
+    dlWireCanvas();
+  }
+  syncDraglabMode();
+}
+
 /* ================= wiring ================= */
 
 function init() {
@@ -4206,6 +4630,7 @@ function init() {
   wireExport();
   syncPixelMode();
   syncSlicerMode();
+  syncDraglabMode();
 
   const toolBackBtn = document.getElementById("toolBack");
   if (toolBackBtn) toolBackBtn.onclick = () => {
@@ -4223,6 +4648,7 @@ function init() {
       renderParams();
       syncPixelMode();
       syncSlicerMode();
+      syncDraglabMode();
       syncAiModelUI();
     };
   });
@@ -4920,6 +5346,7 @@ function initV6() {
       renderParams();
       syncPixelMode();
       syncSlicerMode();
+      syncDraglabMode();
       syncAiModelUI();
       document.getElementById("tool").scrollIntoView({ behavior: "smooth", block: "start" });
     };
@@ -6728,7 +7155,8 @@ function wire3DLab() {
   });
   function wizardOn() {
     return !(document.body.classList.contains("mode-pixelart") ||
-             document.body.classList.contains("mode-slicer"));
+             document.body.classList.contains("mode-slicer") ||
+             document.body.classList.contains("mode-draglab"));
   }
   function render() {
     var on = wizardOn();

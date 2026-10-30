@@ -103,6 +103,10 @@
       <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="8" width="36" height="32" rx="4" fill="none" stroke="currentColor" stroke-width="3"/><line x1="6" y1="24" x2="42" y2="24" stroke="currentColor" stroke-width="3" stroke-dasharray="5 4"/><path d="M30 34l6 6M36 34l-6 6" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
       <span class="tool-text"><b>Sprite Slicer</b><span>slice a sprite sheet into frames &middot; 100% offline</span></span>
     </button>
+    <button class="tool-card" data-cat="draglab" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="15" cy="15" r="5" fill="currentColor"/><path d="M19 19 L31 27" stroke="currentColor" stroke-width="3" stroke-dasharray="4 4"/><circle cx="35" cy="31" r="7" fill="none" stroke="currentColor" stroke-width="3"/><path d="M35 27v8M31 31h8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+      <span class="tool-text"><b>DragLab</b><span>pull any photo into shape &middot; point-drag warp &middot; 100% offline</span></span>
+    </button>
   </div>
 </section>
 
@@ -288,6 +292,18 @@
         <figcaption id="pxOutCap" class="dim">pixel art</figcaption>
       </figure>
     </div>
+
+    <section id="draglab" class="draglab-side" hidden aria-label="DragLab — point-drag photo warp">
+      <div class="draglab-box" id="dlStageBox">
+        <canvas id="dlCanvas" width="480" height="360"></canvas>
+        <div class="draglab-empty" id="dlEmpty">
+          <p><strong>DragLab</strong> — pull any photo into shape.</p>
+          <p class="dim">Drop an image here, paste one, or hit <b>Try the sample</b> in the panel.<br>Then click the photo to add a point and drag it.</p>
+        </div>
+      </div>
+      <p class="draglab-hint">Click to add a point, drag it to pull the picture.</p>
+      <p class="draglab-readout dim" id="dlReadout" role="status" aria-live="polite"></p>
+    </section>
 
     <div id="retryBar" class="retry-bar" hidden>
       <span class="retry-msg" id="retryMsg"></span>
