@@ -189,7 +189,7 @@ function renderParams() {
       <div class="row"><button type="button" class="btn-ghost" id="dlSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="dlPick" style="text-align:center">Upload photo</button><input type="file" id="dlFile" accept="image/*" hidden></div>
       <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="dlUndo">Undo point</button><button type="button" class="btn-ghost" id="dlReset">Reset</button></div>
       <button type="button" class="btn-ghost dl-download" id="dlExport">Export PNG</button>
-      <div class="dim" style="margin-top:8px">Click the photo to add a point, drag it to pull the picture. Right-click (or long-press) a point to remove it.</div>`;
+      <div class="dim" style="margin-top:8px">Click the photo to add a point, drag it to pull the picture. Right-click a point to remove it.</div>`;
     wireDraglab();
   } else {
     box.innerHTML = `
@@ -4489,7 +4489,6 @@ function dlExportPNG() {
 /* ---------------- DragLab wiring ---------------- */
 
 let dlDrag = null;        // index of the point being dragged, or null
-let dlPressTimer = 0;     // long-press-to-remove timer
 let dlStaticWired = false;
 
 function dlCanvasPos(e) {
@@ -4528,18 +4527,13 @@ function dlWireCanvas() {
     }
     dlDrag = idx;
     try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-    clearTimeout(dlPressTimer);
-    if (!isNew) {
-      // long-press an existing point (without moving) removes it
-      dlPressTimer = setTimeout(() => {
-        if (dlDrag === idx) {
-          D.points.splice(idx, 1);
-          dlDrag = null;
-          dlQueueDraw();
-        }
-      }, 650);
-    }
-    dlQueueDraw();
+    // No long-press-to-remove: a press that pauses before moving (a user
+    // thinking, a slow drag start, automation driving the page) must
+    // never eat the point mid-gesture — that timer once killed every
+    // slow drag before it started: the point vanished, the drag went
+    // nowhere and the readout fell back to "no points yet". Points are
+    // removed by right-click instead (see contextmenu below).
+    dlDraw();          // paint the grabbed/new point now, even if rAF is throttled
     e.preventDefault();
   });
   cv.addEventListener("pointermove", (e) => {
@@ -4547,14 +4541,17 @@ function dlWireCanvas() {
     const D = dlState();
     const p = D.points[dlDrag];
     if (!p) { dlDrag = null; return; }
-    clearTimeout(dlPressTimer);
     const pos = dlCanvasPos(e);
     const mx = D.src.w / 4, my = D.src.h / 4; // a little room past the edges
     p.qx = Math.max(-mx, Math.min(D.src.w + mx, pos.x));
     p.qy = Math.max(-my, Math.min(D.src.h + my, pos.y));
     dlQueueDraw();
   });
-  const endDrag = () => { clearTimeout(dlPressTimer); dlDrag = null; };
+  const endDrag = () => {
+    if (dlDrag === null) return;
+    dlDrag = null;
+    dlDraw();          // final warp painted on release, rAF or no rAF
+  };
   cv.addEventListener("pointerup", endDrag);
   cv.addEventListener("pointercancel", endDrag);
   cv.addEventListener("contextmenu", (e) => {
