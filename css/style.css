@@ -1228,6 +1228,10 @@ body.mode-draglab .mobile-bar { display: none !important; }
   text-align: center; margin-top: 10px; width: 100%;
 }
 .dl-download:hover { background: var(--violet); color: var(--on-accent); }
+/* v8.6 liquify brushes: in Brush mode the drawn ring replaces the OS
+   cursor over the photo (the ring's size IS the brush size) */
+.draglab-box canvas.dl-brush { cursor: none; }
+#dlBrushCtl .seg { margin-bottom: 4px; }
 
 /* ---------- v8.3: Cutout Lab AI background removal ---------- */
 /* cutout mode hides the sprite-pipeline controls; Cutout Lab owns the lab */
@@ -1281,6 +1285,365 @@ body.mode-cutout .mobile-bar { display: none !important; }
 }
 .co-download:hover { background: var(--violet); color: var(--on-accent); }
 .co-download:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ---------- v8.4: Upscale Lab AI enlargement ---------- */
+/* upscale mode hides the sprite-pipeline controls; Upscale Lab owns the lab */
+.controls.mode-upscale #prompt,
+.controls.mode-upscale label[for="prompt"],
+.controls.mode-upscale #promptPeek,
+.controls.mode-upscale #sourceLabel,
+.controls.mode-upscale #sourceSeg,
+.controls.mode-upscale #keyLabel,
+.controls.mode-upscale #keyRow,
+.controls.mode-upscale #generate,
+.controls.mode-upscale .gen-note { display: none !important; }
+.stage-panel.mode-upscale .canvas-wrap,
+.stage-panel.mode-upscale #retryBar,
+.stage-panel.mode-upscale #framesHead,
+.stage-panel.mode-upscale #framesRow,
+.stage-panel.mode-upscale #splitHead,
+.stage-panel.mode-upscale #splitGrid,
+.stage-panel.mode-upscale .preview-export,
+.stage-panel.mode-upscale .stepper { display: none !important; }
+/* phone sticky generate bar must not fire the sprite pipeline in upscale mode */
+body.mode-upscale .mobile-bar { display: none !important; }
+
+.upscale-side[hidden] { display: none; }
+.upscale-box {
+  position: relative; background: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 12px; text-align: center;
+}
+.upscale-box.up-over { border-color: var(--violet); }
+.upscale-box canvas {
+  max-width: 100%; height: auto; display: block; margin: 0 auto;
+  border-radius: 8px;
+}
+.upscale-empty {
+  position: absolute; inset: 12px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; padding: 16px;
+  pointer-events: none;
+}
+.upscale-empty[hidden] { display: none; }
+.upscale-empty p { margin: 0; }
+.upscale-hint { text-align: center; font-size: 13px; margin: 10px 0 2px; }
+.upscale-readout {
+  text-align: center; font-family: var(--mono); font-size: 12px;
+  margin: 2px 0 0; min-height: 15px;
+}
+.up-download {
+  border-color: var(--violet); color: var(--violet); font-weight: 700;
+  text-align: center; margin-top: 10px; width: 100%;
+}
+.up-download:hover { background: var(--violet); color: var(--on-accent); }
+.up-download:disabled { opacity: .4; cursor: not-allowed; }
+.up-compare {
+  display: flex; align-items: center; gap: 10px; margin: 10px 2px 0;
+  font-size: 12px;
+}
+.up-compare[hidden] { display: none; }
+.up-compare input[type="range"] { flex: 1; }
+.up-progress {
+  height: 6px; border-radius: 3px; margin: 10px 2px 0;
+  background: var(--line); overflow: hidden;
+}
+.up-progress[hidden] { display: none; }
+.up-progress-bar {
+  height: 100%; width: 0%; border-radius: 3px;
+  background: var(--violet); transition: width .2s ease;
+}
+
+/* ---------- v8.5: Atlas Packer ---------- */
+/* atlas mode hides the sprite-pipeline controls; Atlas Packer owns the lab */
+.controls.mode-atlas #prompt,
+.controls.mode-atlas label[for="prompt"],
+.controls.mode-atlas #promptPeek,
+.controls.mode-atlas #sourceLabel,
+.controls.mode-atlas #sourceSeg,
+.controls.mode-atlas #keyLabel,
+.controls.mode-atlas #keyRow,
+.controls.mode-atlas #generate,
+.controls.mode-atlas .gen-note { display: none !important; }
+.stage-panel.mode-atlas .canvas-wrap,
+.stage-panel.mode-atlas #retryBar,
+.stage-panel.mode-atlas #framesHead,
+.stage-panel.mode-atlas #framesRow,
+.stage-panel.mode-atlas #splitHead,
+.stage-panel.mode-atlas #splitGrid,
+.stage-panel.mode-atlas .preview-export,
+.stage-panel.mode-atlas .stepper { display: none !important; }
+/* phone sticky generate bar must not fire the sprite pipeline in atlas mode */
+body.mode-atlas .mobile-bar { display: none !important; }
+
+.atlas-side[hidden] { display: none; }
+.atlas-box {
+  position: relative; background: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 12px; text-align: center;
+}
+.atlas-box.at-over { border-color: var(--violet); }
+.atlas-box canvas {
+  max-width: 100%; height: auto; display: block; margin: 0 auto;
+  border-radius: 8px;
+  /* checkerboard so packed transparency reads at a glance */
+  background: repeating-conic-gradient(var(--panel) 0% 25%, var(--ink) 0% 50%) 0 0 / 24px 24px;
+}
+.atlas-empty {
+  position: absolute; inset: 12px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; padding: 16px;
+  pointer-events: none;
+}
+.atlas-empty[hidden] { display: none; }
+.atlas-empty p { margin: 0; }
+.atlas-hint { text-align: center; font-size: 13px; margin: 10px 0 2px; }
+.atlas-readout {
+  text-align: center; font-family: var(--mono); font-size: 12px;
+  margin: 2px 0 0; min-height: 15px;
+}
+.at-download {
+  border-color: var(--violet); color: var(--violet); font-weight: 700;
+  text-align: center; margin-top: 10px; width: 100%;
+}
+.at-download:hover { background: var(--violet); color: var(--on-accent); }
+.at-download:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ---------- v8.7: Normal Map Lab ---------- */
+/* normalmap mode hides the sprite-pipeline controls; Normal Map Lab owns the lab */
+.controls.mode-normalmap #prompt,
+.controls.mode-normalmap label[for="prompt"],
+.controls.mode-normalmap #promptPeek,
+.controls.mode-normalmap #sourceLabel,
+.controls.mode-normalmap #sourceSeg,
+.controls.mode-normalmap #keyLabel,
+.controls.mode-normalmap #keyRow,
+.controls.mode-normalmap #generate,
+.controls.mode-normalmap .gen-note { display: none !important; }
+.stage-panel.mode-normalmap .canvas-wrap,
+.stage-panel.mode-normalmap #retryBar,
+.stage-panel.mode-normalmap #framesHead,
+.stage-panel.mode-normalmap #framesRow,
+.stage-panel.mode-normalmap #splitHead,
+.stage-panel.mode-normalmap #splitGrid,
+.stage-panel.mode-normalmap .preview-export,
+.stage-panel.mode-normalmap .stepper { display: none !important; }
+/* phone sticky generate bar must not fire the sprite pipeline in normalmap mode */
+body.mode-normalmap .mobile-bar { display: none !important; }
+
+.normalmap-side[hidden] { display: none; }
+.normalmap-box {
+  position: relative; background: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 12px; text-align: center;
+}
+.normalmap-box.nm-over { border-color: var(--violet); }
+.normalmap-box canvas {
+  max-width: 100%; height: auto; display: block; margin: 0 auto;
+  border-radius: 8px;
+}
+.normalmap-empty {
+  position: absolute; inset: 12px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; padding: 16px;
+  pointer-events: none;
+}
+.normalmap-empty[hidden] { display: none; }
+.normalmap-empty p { margin: 0; }
+.normalmap-hint { text-align: center; font-size: 13px; margin: 10px 0 2px; }
+.normalmap-readout {
+  text-align: center; font-family: var(--mono); font-size: 12px;
+  margin: 2px 0 0; min-height: 15px;
+}
+.nm-download {
+  border-color: var(--violet); color: var(--violet); font-weight: 700;
+  text-align: center; margin-top: 10px; width: 100%;
+}
+.nm-download:hover { background: var(--violet); color: var(--on-accent); }
+.nm-download:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ---------- v8.8: Seamless Tiler ---------- */
+/* tiler mode hides the sprite-pipeline controls; Seamless Tiler owns the lab */
+.controls.mode-tiler #prompt,
+.controls.mode-tiler label[for="prompt"],
+.controls.mode-tiler #promptPeek,
+.controls.mode-tiler #sourceLabel,
+.controls.mode-tiler #sourceSeg,
+.controls.mode-tiler #keyLabel,
+.controls.mode-tiler #keyRow,
+.controls.mode-tiler #generate,
+.controls.mode-tiler .gen-note { display: none !important; }
+.stage-panel.mode-tiler .canvas-wrap,
+.stage-panel.mode-tiler #retryBar,
+.stage-panel.mode-tiler #framesHead,
+.stage-panel.mode-tiler #framesRow,
+.stage-panel.mode-tiler #splitHead,
+.stage-panel.mode-tiler #splitGrid,
+.stage-panel.mode-tiler .preview-export,
+.stage-panel.mode-tiler .stepper { display: none !important; }
+/* phone sticky generate bar must not fire the sprite pipeline in tiler mode */
+body.mode-tiler .mobile-bar { display: none !important; }
+
+.tiler-side[hidden] { display: none; }
+.tiler-box {
+  position: relative; background: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 12px; text-align: center;
+}
+.tiler-box.tl-over { border-color: var(--violet); }
+.tiler-box canvas {
+  max-width: 100%; height: auto; display: block; margin: 0 auto;
+  border-radius: 8px;
+}
+.tiler-empty {
+  position: absolute; inset: 12px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; padding: 16px;
+  pointer-events: none;
+}
+.tiler-empty[hidden] { display: none; }
+.tiler-empty p { margin: 0; }
+.tiler-hint { text-align: center; font-size: 13px; margin: 10px 0 2px; }
+.tiler-readout {
+  text-align: center; font-family: var(--mono); font-size: 12px;
+  margin: 2px 0 0; min-height: 15px;
+}
+.tl-download {
+  border-color: var(--violet); color: var(--violet); font-weight: 700;
+  text-align: center; margin-top: 10px; width: 100%;
+}
+.tl-download:hover { background: var(--violet); color: var(--on-accent); }
+.tl-download:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ---------- v8.9: Palette Lab ---------- */
+/* palette mode hides the sprite-pipeline controls; Palette Lab owns the lab */
+.controls.mode-palette #prompt,
+.controls.mode-palette label[for="prompt"],
+.controls.mode-palette #promptPeek,
+.controls.mode-palette #sourceLabel,
+.controls.mode-palette #sourceSeg,
+.controls.mode-palette #keyLabel,
+.controls.mode-palette #keyRow,
+.controls.mode-palette #generate,
+.controls.mode-palette .gen-note { display: none !important; }
+.stage-panel.mode-palette .canvas-wrap,
+.stage-panel.mode-palette #retryBar,
+.stage-panel.mode-palette #framesHead,
+.stage-panel.mode-palette #framesRow,
+.stage-panel.mode-palette #splitHead,
+.stage-panel.mode-palette #splitGrid,
+.stage-panel.mode-palette .preview-export,
+.stage-panel.mode-palette .stepper { display: none !important; }
+/* phone sticky generate bar must not fire the sprite pipeline in palette mode */
+body.mode-palette .mobile-bar { display: none !important; }
+
+.palette-side[hidden] { display: none; }
+.palette-box {
+  position: relative; background: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 12px; text-align: center;
+}
+.palette-box.pl-over { border-color: var(--violet); }
+.palette-box canvas {
+  max-width: 100%; height: auto; display: block; margin: 0 auto;
+  border-radius: 8px;
+  /* checkerboard so sprite transparency reads at a glance */
+  background: repeating-conic-gradient(var(--panel) 0% 25%, var(--ink) 0% 50%) 0 0 / 24px 24px;
+  image-rendering: pixelated;
+}
+.palette-empty {
+  position: absolute; inset: 12px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; padding: 16px;
+  pointer-events: none;
+}
+.palette-empty[hidden] { display: none; }
+.palette-empty p { margin: 0; }
+.palette-hint { text-align: center; font-size: 13px; margin: 10px 0 2px; }
+.palette-readout {
+  text-align: center; font-family: var(--mono); font-size: 12px;
+  margin: 2px 0 0; min-height: 15px;
+}
+.pl-download {
+  border-color: var(--violet); color: var(--violet); font-weight: 700;
+  text-align: center; margin-top: 10px; width: 100%;
+}
+.pl-download:hover { background: var(--violet); color: var(--on-accent); }
+.pl-download:disabled { opacity: .4; cursor: not-allowed; }
+/* the extracted palette: one clickable swatch per color, count alongside */
+.pl-swatches { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+.pl-swatch {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px 4px 4px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--panel); color: inherit; font-family: var(--mono); font-size: 11px;
+  cursor: pointer;
+}
+.pl-swatch:hover { border-color: var(--violet); }
+.pl-swatch.active { border-color: var(--violet); box-shadow: 0 0 0 1px var(--violet); }
+.pl-dot {
+  width: 16px; height: 16px; border-radius: 50%; flex: none;
+  border: 1px solid var(--line);
+  /* checkerboard behind the dot so translucent colors read honestly */
+  background-image: repeating-conic-gradient(var(--panel) 0% 25%, var(--ink) 0% 50%);
+  background-size: 8px 8px;
+}
+.pl-fromchip {
+  width: 22px; height: 22px; border-radius: 6px; flex: none;
+  border: 1px solid var(--line);
+  background-image: repeating-conic-gradient(var(--panel) 0% 25%, var(--ink) 0% 50%);
+  background-size: 8px 8px;
+}
+/* variant chips wear the spun palette as a gradient strip */
+.pl-variants { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+.pl-variant {
+  padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px;
+  color: inherit; font-family: var(--mono); font-size: 11px; cursor: pointer;
+}
+.pl-variant:hover { border-color: var(--violet); }
+
+/* ---------- v8.10: GIF Sheet ---------- */
+/* gif mode hides the sprite-pipeline controls; GIF Sheet owns the lab */
+.controls.mode-gif #prompt,
+.controls.mode-gif label[for="prompt"],
+.controls.mode-gif #promptPeek,
+.controls.mode-gif #sourceLabel,
+.controls.mode-gif #sourceSeg,
+.controls.mode-gif #keyLabel,
+.controls.mode-gif #keyRow,
+.controls.mode-gif #generate,
+.controls.mode-gif .gen-note { display: none !important; }
+.stage-panel.mode-gif .canvas-wrap,
+.stage-panel.mode-gif #retryBar,
+.stage-panel.mode-gif #framesHead,
+.stage-panel.mode-gif #framesRow,
+.stage-panel.mode-gif #splitHead,
+.stage-panel.mode-gif #splitGrid,
+.stage-panel.mode-gif .preview-export,
+.stage-panel.mode-gif .stepper { display: none !important; }
+/* phone sticky generate bar must not fire the sprite pipeline in gif mode */
+body.mode-gif .mobile-bar { display: none !important; }
+
+.gif-side[hidden] { display: none; }
+.gif-box {
+  position: relative; background: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 12px; text-align: center;
+}
+.gif-box.gf-over { border-color: var(--violet); }
+.gif-box canvas {
+  max-width: 100%; height: auto; display: block; margin: 0 auto;
+  border-radius: 8px;
+  /* checkerboard so sheet transparency reads at a glance */
+  background: repeating-conic-gradient(var(--panel) 0% 25%, var(--ink) 0% 50%) 0 0 / 24px 24px;
+  image-rendering: pixelated;
+}
+.gif-empty {
+  position: absolute; inset: 12px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; padding: 16px;
+  pointer-events: none;
+}
+.gif-empty[hidden] { display: none; }
+.gif-empty p { margin: 0; }
+.gif-hint { text-align: center; font-size: 13px; margin: 10px 0 2px; }
+.gif-readout {
+  text-align: center; font-family: var(--mono); font-size: 12px;
+  margin: 2px 0 0; min-height: 15px;
+}
+.gf-download {
+  border-color: var(--violet); color: var(--violet); font-weight: 700;
+  text-align: center; margin-top: 10px; width: 100%;
+}
+.gf-download:hover { background: var(--violet); color: var(--on-accent); }
+.gf-download:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ================= v6.16 — lab redesign =================
  * Same backend, friendlier face: controls grouped into numbered step

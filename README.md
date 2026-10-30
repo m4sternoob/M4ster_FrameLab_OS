@@ -27,6 +27,95 @@ sheet PNG plus an atlas manifest JSON your game can read directly.
 
 ![Text to 3D — words straight to a mesh](assets/framelab-3d-mesh.gif)
 
+## v8.10 — GIF Sheet: an animated GIF in, a sprite sheet out
+
+A new standalone tool next to Palette Lab — the round trip's other
+half. Drop in an animated GIF and GIF Sheet decodes every frame,
+composites it the way a player would (transparency, partial frames,
+and the disposal rules honored), and lays the frames out in a grid:
+near-square automatically, or at a column count you pick. The PNG
+export is the sheet; the JSON export carries each frame's rect and
+its duration in ms, in the same spirit as the Slicer and Atlas
+manifests, ready to drop into an engine. The GIF decoder is
+hand-written from the GIF89a spec — LZW, interlacing, the lot —
+because no library was going to run it in the visitor's browser for
+free. Pure JavaScript — 100% in your browser, no model, no uploads.
+
+## v8.9 — Palette Lab: a sprite's colors out, swapped, spun
+
+A new standalone tool next to Seamless Tiler. Drop in a sprite and
+Palette Lab pulls its palette out — exact colors with pixel counts
+when the sprite uses 16 or fewer (most do), a median-cut quantize
+when it doesn't. Click a swatch, pick a new color, and Apply swaps
+it everywhere; a Tolerance slider feathers the swap across nearby
+shades so anti-aliased edges don't fringe. One row of variant chips
+spins the palette's hues (+60° to +300°) and repaints the sprite
+through the spun palette — flat colors stay flat, so a blue team
+becomes a red team in one click. Exports: the recolored PNG, the
+palette as a GIMP .gpl, or as JSON. Fully transparent pixels are
+never touched. Pure JavaScript — 100% in your browser, no model,
+no uploads.
+
+## v8.8 — Seamless Tiler: any texture in, clean repeat out
+
+A new standalone tool next to Normal Map Lab. Drop in a texture and
+Seamless Tiler makes it repeat without visible seams. An Offset view
+rolls the texture by half on both axes so the wrap edges land in the
+middle, where the seams are easy to see; a Heal slider then
+cross-fades the edge bands — each band pixel blends toward the pixel
+mirrored from the opposite edge, meeting exactly halfway on the
+outermost line so the wrap step disappears. A live 3×3 preview
+repeats the healed texture while you work, and the export is the
+healed texture at its original resolution. Pure JavaScript — 100%
+in your browser, no model, no uploads. Best on organic and soft
+textures; hard geometric patterns will still show.
+
+## v8.7 — Normal Map Lab: flat sprite in, lit sprite out
+
+A new standalone tool next to Atlas Packer. Drop in a flat sprite or
+texture and Normal Map Lab builds the maps a 2D engine needs for
+dynamic lighting: a tangent-space normal map (Sobel gradients over a
+height field taken from the image brightness, or from its alpha
+channel in silhouette mode for cutout sprites), an ambient-occlusion
+map and a specular map. Sampling wraps around the edges, so tileable
+textures stay seamless, and a green-channel toggle switches between
+OpenGL (Y+) and DirectX (Y−) conventions. A lit preview with a
+pointer-follow light shows the result before you export. Pure
+JavaScript — 100% in your browser, no model, no uploads.
+
+## v8.6 — DragLab learns liquify brushes
+
+DragLab gains a Brush mode next to its original Points mode: Push,
+Pinch, Bloat and Twirl liquify brushes that paint straight onto the
+photo, with size and strength sliders and per-stroke undo. The brushes
+paint small offsets onto the same warp grid the point-drag renderer
+already uses, so brush strokes and dragged points stack on one photo
+and export together in a single PNG. Still pure JavaScript — 100% in
+your browser, no model, no uploads.
+
+## v8.5 — Atlas Packer: loose frames in, one sprite sheet out
+
+A new standalone tool next to Upscale Lab — the inverse of the Slicer.
+Drop in a pile of loose sprite or frame images and Atlas Packer trims
+their transparent borders, packs them into a single atlas PNG with a
+hand-rolled MaxRects packer (padding, 1px edge extrude and
+power-of-two sizing included), and writes the manifest your engine
+expects: TexturePacker JSON (hash format, with the trim recorded as
+spriteSourceSize/sourceSize), a Unity .tpsheet, or a Godot .tpsheet.
+Identical frames are packed once and listed under every name. Pure
+JavaScript — 100% in your browser, no uploads, no login.
+
+## v8.4 — Upscale Lab: AI enlargement, in your browser
+
+A new standalone tool next to Cutout Lab: drop in a small photo or piece
+of art and Upscale Lab enlarges it ×4 with AI — 100% in your browser
+(onnxruntime-web, WebGPU when available, WASM otherwise). The model
+downloads once (about 5 MB) and is cached; images never leave the
+device. A before/after slider makes the difference easy to judge, and a
+built-in Pixel mode (nearest-neighbour + EPX) enlarges pixel art with
+no model at all.
+Model credit: Real-ESRGAN (`realesr-general-x4v3`) — BSD-3-Clause.
+
 ## v8.3 — Cutout Lab: AI background removal, in your browser
 
 A new standalone tool next to the Slicer, Pixel Converter and DragLab:

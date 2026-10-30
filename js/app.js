@@ -54,8 +54,14 @@ const state = {
   strict: false,           // retry mode: appends the strict isolation clause to prompts
   slicer: null,            // v6.6 dedicated slicer: { sheet, imgW, imgH, rows, cols, mode, bg, knockout, margin, pad, ox, oy, pieces:[{canvas,empty,rect}], selection:[], fps, playback }
   pixelart: null,          // v6.5 image→pixel-art: { src:{data,w,h}, imgW, imgH, w, h, colors, dither, scale, out }
-  draglab: null,           // v8.2 DragLab point-drag warp: { src:{data,w,h}, imgW, imgH, points:[{px,py,qx,qy}], name }
+  draglab: null,           // v8.2 DragLab warp: { src:{data,w,h}, imgW, imgH, points:[{px,py,qx,qy}], name, mode, brush, brushUndo, brushKind, brushSize, brushStrength } (brush = v8.6 liquify grid)
   cutout: null,            // v8.3 Cutout Lab AI bg removal: { src:{data,w,h}, imgW, imgH, matte, threshold, feather, busy, name }
+  upscale: null,           // v8.4 Upscale Lab AI enlargement: { src, srcCv, imgW, imgH, out, outKind, mode, pxScale, pxAlgo, exportScale, compare, busy, name }
+  atlasPack: null,         // v8.5 Atlas Packer: { items:[{name,cv,data}], packed, pad, extrude, pot, labels, format } — state.atlas is the generator's own sheet, hence the longer key
+  normalmap: null,         // v8.7 Normal Map Lab: { src:{data,w,h}, imgW, imgH, name, view, strength, smooth, alphaMode, wrap, flipY, maps, light }
+  tiler: null,             // v8.8 Seamless Tiler: { src:{data,w,h}, full:{data,w,h}, imgW, imgH, name, view, strength, healed, healedCv }
+  palette: null,           // v8.9 Palette Lab: { src:{data,w,h}, imgW, imgH, name, work:{data,w,h}, colors:[{r,g,b,count}], fromIdx, toHex, tolerance, undo:[] }
+  gif: null,               // v8.10 GIF Sheet: { frames:[{data,duration}], frameW, frameH, name, cols, autoCols } — composited frames at logical-screen size
 };
 
 /* non-destructive curation sidecar: order lives here, never in the frames */
@@ -113,6 +119,12 @@ const CATEGORY_DEFAULTS = {
   slicer:    { rows: 3, cols: 9, mode: "grid", bg: "black", knockout: true, margin: 0, pad: 0, ox: 0, oy: 0, fps: 8, playback: "loop" },
   draglab:   {},
   cutout:    {},
+  upscale:   {},
+  atlas:     {},
+  normalmap: {},
+  tiler:     {},
+  palette:   {},
+  gif:       {},
 };
 
 const STATE_FPS = { idle: 6, walk: 8, run: 10, jump: 8, attack: 10 };
@@ -185,13 +197,27 @@ function renderParams() {
       </div><button type="button" class="btn-ghost sl-download" id="slDownload" disabled>Download animation <span class="dim">PNG + JSON</span></button><button type="button" class="btn-ghost sl-download" id="slCells" disabled>Download cells <span class="dim">individual PNGs</span></button><div class="dim">100% offline.</div>`;
     wireSlicer();
   } else if (cat === "draglab") {
+    const D = dlState();
     box.innerHTML = `
       <div class="field-label">DragLab <span class="dim">(100% offline)</span></div>
       <p class="dim" style="margin:2px 0 8px">DragLab — pull any photo into shape. Click, drag, done. Runs 100% in your browser: no AI model, no uploads, no login.</p>
+      <div class="seg" id="dlModeSeg" style="grid-template-columns:repeat(2,minmax(0,1fr))"><button type="button" class="seg-btn${D.mode === "points" ? " active" : ""}" data-dlmode="points">Points</button><button type="button" class="seg-btn${D.mode === "brush" ? " active" : ""}" data-dlmode="brush">Brush</button></div>
       <div class="row"><button type="button" class="btn-ghost" id="dlSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="dlPick" style="text-align:center">Upload photo</button><input type="file" id="dlFile" accept="image/*" hidden></div>
-      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="dlUndo">Undo point</button><button type="button" class="btn-ghost" id="dlReset">Reset</button></div>
-      <button type="button" class="btn-ghost dl-download" id="dlExport">Export PNG</button>
-      <div class="dim" style="margin-top:8px">Click the photo to add a point, drag it to pull the picture. Right-click a point to remove it.</div>`;
+      <div id="dlPointsCtl"${D.mode === "brush" ? " hidden" : ""}>
+        <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="dlUndo">Undo point</button><button type="button" class="btn-ghost" id="dlReset">Reset</button></div>
+        <div class="dim" style="margin-top:8px">Click the photo to add a point, drag it to pull the picture. Right-click a point to remove it.</div>
+      </div>
+      <div id="dlBrushCtl"${D.mode === "brush" ? "" : " hidden"}>
+        <div class="field-label">Liquify brush</div>
+        <div class="seg cols4" id="dlBrushSeg">
+          ${[["push", "Push"], ["pinch", "Pinch"], ["bloat", "Bloat"], ["twirl", "Twirl"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === D.brushKind ? " active" : ""}" data-brush="${v}">${lbl}</button>`).join("")}
+        </div>
+        <div class="sl-row"><span class="dim">size</span><input type="range" id="dlBrushSize" min="16" max="160" step="4" value="${D.brushSize}" aria-label="brush size"><span class="sl-val" id="dlBrushSizeVal">${D.brushSize}px</span></div>
+        <div class="sl-row"><span class="dim">strength</span><input type="range" id="dlBrushStrength" min="0" max="100" value="${D.brushStrength}" aria-label="brush strength"><span class="sl-val" id="dlBrushStrengthVal">${D.brushStrength}%</span></div>
+        <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="dlBrushUndo">Undo stroke</button><button type="button" class="btn-ghost" id="dlResetB">Reset</button></div>
+        <div class="dim" style="margin-top:8px">Paint straight on the photo: push it along, pinch it in, bloat it out, twirl it round. Points and brush work stack — switch modes freely.</div>
+      </div>
+      <button type="button" class="btn-ghost dl-download" id="dlExport">Export PNG</button>`;
     wireDraglab();
   } else if (cat === "cutout") {
     const co = coState();
@@ -206,6 +232,106 @@ function renderParams() {
       <button type="button" class="btn-ghost co-download" id="coExport">Export PNG</button>
       <div class="dim" style="margin-top:8px">Model: U-2-Net (u2netp) via the rembg project — Apache-2.0. Runs on your GPU when it can, CPU otherwise.</div>`;
     wireCutout();
+  } else if (cat === "upscale") {
+    const up = upState();
+    box.innerHTML = `
+      <div class="field-label">Upscale Lab <span class="dim">(AI, in your browser)</span></div>
+      <p class="dim" style="margin:2px 0 8px">Upscale Lab — AI enlargement in your browser. Model downloads once (about 5 MB); photos never leave your device. For photos/art — pixel art stays crisp with the Pixel Converter instead.</p>
+      <div class="row"><button type="button" class="btn-ghost" id="upSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="upPick" style="text-align:center">Upload image</button><input type="file" id="upFile" accept="image/*" hidden></div>
+      <div class="field-label">Mode</div>
+      <div class="seg" id="upModeSeg"><button type="button" class="seg-btn${up.mode === "ai" ? " active" : ""}" data-upmode="ai">AI &times;4</button><button type="button" class="seg-btn${up.mode === "pixel" ? " active" : ""}" data-upmode="pixel">Pixel</button></div>
+      <div id="upAiRow"${up.mode === "ai" ? "" : " hidden"}>
+        <button type="button" class="btn-ghost up-download" id="upRun">Upscale &times;4</button>
+        <div class="row" style="margin-top:8px"><span class="dim">export size</span><select id="upExportScale" class="grow"><option value="4"${up.exportScale === 4 ? " selected" : ""}>&times;4 — full result</option><option value="2"${up.exportScale === 2 ? " selected" : ""}>&times;2 — half size</option></select></div>
+      </div>
+      <div id="upPixelRow"${up.mode === "pixel" ? "" : " hidden"}>
+        <div class="row"><span class="dim">scale</span><select id="upPxScale">${[2, 3, 4].map(s => `<option value="${s}"${s === up.pxScale ? " selected" : ""}>&times;${s}</option>`).join("")}</select><span class="dim">filter</span><select id="upPxAlgo" class="grow"><option value="nearest"${up.pxAlgo === "nearest" ? " selected" : ""}>Nearest — crisp</option><option value="epx"${up.pxAlgo === "epx" ? " selected" : ""}>EPX — smooth</option></select></div>
+        <button type="button" class="btn-ghost up-download" id="upPxApply">Enlarge</button>
+        <div class="dim" style="margin-top:8px">Pixel mode is instant and 100% offline — no model. EPX works at &times;2 and &times;4.</div>
+      </div>
+      <button type="button" class="btn-ghost up-download" id="upExport">Export PNG</button>
+      <div class="dim" style="margin-top:8px">Model: Real-ESRGAN (realesr-general-x4v3) — BSD-3-Clause. Runs on your GPU when it can, CPU otherwise.</div>`;
+    wireUpscale();
+  } else if (cat === "atlas") {
+    const at = atState();
+    box.innerHTML = `
+      <div class="field-label">Atlas Packer <span class="dim">(100% offline)</span></div>
+      <p class="dim" style="margin:2px 0 8px">Atlas Packer — turn loose frames into one game-ready sprite sheet. Runs 100% in your browser.</p>
+      <div class="row"><button type="button" class="btn-ghost" id="atPick" style="text-align:center">Add images</button><input type="file" id="atFile" accept="image/*" multiple hidden><button type="button" class="btn-ghost" id="atClear">Clear</button></div>
+      <div class="sl-row"><span class="dim">padding</span><input type="range" id="atPad" min="0" max="8" value="${at.pad}" aria-label="padding between sprites"><span class="sl-val" id="atPadVal">${at.pad}px</span></div>
+      <label class="chk"><input type="checkbox" id="atExtrude"${at.extrude ? " checked" : ""}> extrude edges <span class="dim">(stops texture bleeding)</span></label>
+      <label class="chk"><input type="checkbox" id="atPot"${at.pot ? " checked" : ""}> power-of-two size</label>
+      <label class="chk"><input type="checkbox" id="atLabels"${at.labels ? " checked" : ""}> outline + names on preview</label>
+      <button type="button" class="btn-ghost at-download" id="atPack">Pack</button>
+      <div class="field-label">Manifest format</div>
+      <div class="row"><select id="atFormat" class="grow"><option value="json"${at.format === "json" ? " selected" : ""}>JSON — TexturePacker hash</option><option value="unity"${at.format === "unity" ? " selected" : ""}>Unity — .tpsheet</option><option value="godot"${at.format === "godot" ? " selected" : ""}>Godot — .tpsheet</option></select></div>
+      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="atExportPng">Export PNG</button><button type="button" class="btn-ghost" id="atExportManifest">Export manifest</button></div>
+      <div class="dim" style="margin-top:8px">Identical frames are packed once and listed under every name in the manifest.</div>`;
+    wireAtlas();
+  } else if (cat === "normalmap") {
+    const N = nmState();
+    box.innerHTML = `
+      <div class="field-label">Normal Map Lab <span class="dim">(100% offline)</span></div>
+      <p class="dim" style="margin:2px 0 8px">Normal Map Lab — turn a flat sprite into a lit one. Normal, AO and specular maps in your browser; wrap-aware so textures stay seamless.</p>
+      <div class="row"><button type="button" class="btn-ghost" id="nmSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="nmPick" style="text-align:center">Upload image</button><input type="file" id="nmFile" accept="image/*" hidden></div>
+      <div class="field-label">Map</div>
+      <div class="seg cols4" id="nmViewSeg">
+        ${[["normal", "Normal"], ["lit", "Lit"], ["ao", "AO"], ["spec", "Spec"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === N.view ? " active" : ""}" data-nmview="${v}">${lbl}</button>`).join("")}
+      </div>
+      <div class="field-label">Height from</div>
+      <div class="seg" id="nmHeightSeg" style="grid-template-columns:repeat(2,minmax(0,1fr))"><button type="button" class="seg-btn${N.alphaMode ? "" : " active"}" data-nmheight="lum">Brightness</button><button type="button" class="seg-btn${N.alphaMode ? " active" : ""}" data-nmheight="alpha">Alpha silhouette</button></div>
+      <div class="sl-row"><span class="dim">strength</span><input type="range" id="nmStrength" min="0" max="200" value="${N.strength}" aria-label="normal strength"><span class="sl-val" id="nmStrengthVal">${N.strength}%</span></div>
+      <div class="sl-row"><span class="dim">smooth</span><input type="range" id="nmSmooth" min="0" max="6" value="${N.smooth}" aria-label="height smoothing"><span class="sl-val" id="nmSmoothVal">${N.smooth}px</span></div>
+      <label class="chk"><input type="checkbox" id="nmWrap"${N.wrap ? " checked" : ""}> wrap edges <span class="dim">(tileable textures stay seamless)</span></label>
+      <div class="field-label">Green channel</div>
+      <div class="seg" id="nmFlipSeg" style="grid-template-columns:repeat(2,minmax(0,1fr))"><button type="button" class="seg-btn${N.flipY ? "" : " active"}" data-nmflip="gl">OpenGL (Y+)</button><button type="button" class="seg-btn${N.flipY ? " active" : ""}" data-nmflip="dx">DirectX (Y&minus;)</button></div>
+      <button type="button" class="btn-ghost nm-download" id="nmExport">Export PNG</button>
+      <div class="dim" style="margin-top:8px">Unity and Godot both read the normal map directly; pick DirectX (Y&minus;) if your lighting looks upside-down.</div>`;
+    wireNormalmap();
+  } else if (cat === "tiler") {
+    const T = tlState();
+    box.innerHTML = `
+      <div class="field-label">Seamless Tiler <span class="dim">(100% offline)</span></div>
+      <p class="dim" style="margin:2px 0 8px">Seamless Tiler — make any texture repeat without visible seams. Best on organic and soft textures; hard geometric patterns will still show.</p>
+      <div class="row"><button type="button" class="btn-ghost" id="tlSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="tlPick" style="text-align:center">Upload texture</button><input type="file" id="tlFile" accept="image/*" hidden></div>
+      <div class="field-label">View</div>
+      <div class="seg" id="tlViewSeg" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        ${[["single", "Single"], ["offset", "Offset"], ["grid", "3\u00D73"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === T.view ? " active" : ""}" data-tlview="${v}">${lbl}</button>`).join("")}
+      </div>
+      <div class="sl-row"><span class="dim">heal</span><input type="range" id="tlStrength" min="0" max="100" value="${T.strength}" aria-label="seam heal strength"><span class="sl-val" id="tlStrengthVal">${T.strength}%</span></div>
+      <button type="button" class="btn-ghost tl-download" id="tlExport">Export PNG</button>
+      <div class="dim" style="margin-top:8px">Offset shifts the texture by half, so the seams land in the middle where you can see them. Heal blends the edges together until the 3&times;3 preview repeats clean. Export is the healed texture at full size.</div>`;
+    wireTiler();
+  } else if (cat === "palette") {
+    const P = plState();
+    box.innerHTML = `
+      <div class="field-label">Palette Lab <span class="dim">(100% offline)</span></div>
+      <p class="dim" style="margin:2px 0 8px">Palette Lab — pull a sprite's colors out, swap them, spin off recolor variants for teams, tiers and skins. All in your browser.</p>
+      <div class="row"><button type="button" class="btn-ghost" id="plSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="plPick" style="text-align:center">Upload sprite</button><input type="file" id="plFile" accept="image/*" hidden></div>
+      <div class="field-label">Colors <span class="dim">(click one to pick it)</span></div>
+      <div class="pl-swatches" id="plSwatches"><span class="dim">no sprite loaded yet</span></div>
+      <div class="field-label">Swap</div>
+      <div class="row"><span class="pl-fromchip" id="plFromChip"></span><span class="dim" id="plFromHex">pick a color above</span><span class="dim">&rarr;</span><input type="color" id="plTo" value="${P.toHex}" aria-label="swap to this color"><button type="button" class="btn-ghost" id="plApply">Apply swap</button></div>
+      <div class="sl-row"><span class="dim">tolerance</span><input type="range" id="plTol" min="0" max="64" value="${P.tolerance}" aria-label="swap tolerance"><span class="sl-val" id="plTolVal">${P.tolerance}</span></div>
+      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="plUndo">Undo</button></div>
+      <div class="field-label">Variants <span class="dim">(palette hue spins)</span></div>
+      <div class="pl-variants" id="plVariants"><span class="dim">load a sprite first</span></div>
+      <button type="button" class="btn-ghost pl-download" id="plExport">Export PNG</button>
+      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="plGpl">Palette .gpl</button><button type="button" class="btn-ghost" id="plJson">Palette .json</button></div>
+      <div class="dim" style="margin-top:8px">Transparent pixels are never touched. Tolerance feathers the swap at the edges, so anti-aliased outlines don't fringe.</div>`;
+    wirePalette();
+  } else if (cat === "gif") {
+    const G = gfState();
+    box.innerHTML = `
+      <div class="field-label">GIF Sheet <span class="dim">(100% offline)</span></div>
+      <p class="dim" style="margin:2px 0 8px">GIF Sheet — turn an animated GIF into a sprite sheet, frames and timings included. Decoded right in your browser; nothing is uploaded.</p>
+      <div class="row"><button type="button" class="btn-ghost" id="gfSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="gfPick" style="text-align:center">Upload GIF</button><input type="file" id="gfFile" accept="image/gif,.gif" hidden></div>
+      <div class="field-label">Sheet layout</div>
+      <div class="row"><label class="dim"><input type="checkbox" id="gfAuto" ${G.autoCols ? "checked" : ""}> auto columns</label><span class="dim">columns</span><input type="number" class="num" id="gfCols" min="1" max="64" value="${G.cols}" ${G.autoCols ? "disabled" : ""}></div>
+      <div class="dim" style="margin-top:4px">Auto lays the frames out near-square. The JSON export carries every frame's rect and duration in ms, ready for an engine.</div>
+      <button type="button" class="btn-ghost gf-download" id="gfExport">Export sheet PNG</button>
+      <button type="button" class="btn-ghost" id="gfJson" style="width:100%;margin-top:8px;text-align:center">Export JSON manifest</button>`;
+    wireGif();
   } else {
     box.innerHTML = `
       <div class="field-label">Effect</div><div class="row"><select id="pType" class="grow">
@@ -223,6 +349,12 @@ function renderParams() {
     slicer: "not used — upload a sheet instead",
     draglab: "not used — upload a photo instead",
     cutout: "not used — upload a photo instead",
+    upscale: "not used — upload an image instead",
+    atlas: "not used — drop images in instead",
+    normalmap: "not used — drop an image in instead",
+    tiler: "not used — drop a texture in instead",
+    palette: "not used — drop a sprite in instead",
+    gif: "not used — drop a GIF in instead",
   };
   $("#prompt").placeholder = "e.g. " + prompts[cat];
 
@@ -3554,7 +3686,13 @@ function syncToolChrome() {
   const tool = state.category === "pixelart" ? "Pixel Converter"
              : state.category === "slicer" ? "Sprite Slicer"
              : state.category === "draglab" ? "DragLab"
-             : state.category === "cutout" ? "Cutout Lab" : null;
+             : state.category === "cutout" ? "Cutout Lab"
+             : state.category === "upscale" ? "Upscale Lab"
+             : state.category === "atlas" ? "Atlas Packer"
+             : state.category === "normalmap" ? "Normal Map Lab"
+             : state.category === "tiler" ? "Seamless Tiler"
+             : state.category === "palette" ? "Palette Lab"
+             : state.category === "gif" ? "GIF Sheet" : null;
   document.querySelectorAll(".ctl-group").forEach(g => {
     g.classList.toggle("tool-hidden", !!tool && g.id !== "ctlStep3");
   });
@@ -4234,7 +4372,14 @@ function wireSlicer() {
 
 function dlState() {
   if (!state.draglab) {
-    state.draglab = { src: null, srcCv: null, imgW: 0, imgH: 0, points: [], name: "photo" };
+    state.draglab = {
+      src: null, srcCv: null, imgW: 0, imgH: 0, points: [], name: "photo",
+      // v8.6 liquify brushes: mode picks which controls the panel shows;
+      // brush is a coarse grid of forward offsets painted by the brushes
+      // (null until the first dab); brushUndo holds per-stroke snapshots.
+      mode: "points", brush: null, brushUndo: [],
+      brushKind: "push", brushSize: 64, brushStrength: 60,
+    };
   }
   return state.draglab;
 }
@@ -4309,6 +4454,100 @@ function dlSample(sd, W, H, sx, sy, od, o) {
   }
 }
 
+/* ================= v8.6: DragLab liquify brushes =================
+ * A second way to push the SAME warp. Where points store a handful of
+ * drag pairs for the MLS solve, the brushes paint a persistent grid of
+ * small forward offsets (in photo pixels) on the renderer's own coarse
+ * grid. dlInvMap below composes the two into ONE backward lookup, so
+ * there is still exactly one render path — and points + brush strokes
+ * happily stack on the same photo. */
+
+/* the brush grid for the current photo, made on first use. Node (gx, gy)
+ * sits at photo position (gx*step, gy*step) — the same nodes dlRenderWarp
+ * evaluates — and (ox, oy) says how far that node's content has been
+ * pushed. peak caches the largest offset so the renderer can skip the
+ * warp entirely when nothing has been painted. */
+function dlBrushGrid() {
+  const D = dlState();
+  if (!D.src) return null;
+  const W = D.src.w, H = D.src.h;
+  const step = Math.max(1, Math.round(Math.max(W, H) / 300));
+  const gw = Math.floor(W / step) + 1, gh = Math.floor(H / step) + 1;
+  if (D.brush && D.brush.step === step && D.brush.gw === gw && D.brush.gh === gh) return D.brush;
+  D.brush = { step, gw, gh, ox: new Float32Array(gw * gh), oy: new Float32Array(gw * gh), peak: 0 };
+  D.brushUndo = [];
+  return D.brush;
+}
+
+/* bilinear read of the brush offsets at an arbitrary photo position */
+function dlBrushOffsetAt(grid, x, y) {
+  const gw = grid.gw, gh = grid.gh;
+  if (gw < 2 || gh < 2) return [0, 0];
+  const gxf = x / grid.step, gyf = y / grid.step;
+  const gx0 = Math.max(0, Math.min(Math.floor(gxf), gw - 2)), fx = gxf - gx0;
+  const gy0 = Math.max(0, Math.min(Math.floor(gyf), gh - 2)), fy = gyf - gy0;
+  const i00 = gy0 * gw + gx0, i10 = i00 + 1, i01 = i00 + gw, i11 = i01 + 1;
+  const ox = (grid.ox[i00] * (1 - fx) + grid.ox[i10] * fx) * (1 - fy)
+           + (grid.ox[i01] * (1 - fx) + grid.ox[i11] * fx) * fy;
+  const oy = (grid.oy[i00] * (1 - fx) + grid.oy[i10] * fx) * (1 - fy)
+           + (grid.oy[i01] * (1 - fx) + grid.oy[i11] * fx) * fy;
+  return [ox, oy];
+}
+
+/* paint one brush dab into the grid. (dx, dy) is how far the pointer
+ * travelled for this dab — only Push uses it. Every dab is weighted by a
+ * cosine falloff: full strength at the centre, easing to exactly zero at
+ * the rim, so strokes blend with no hard edge. strength runs 0..1. */
+function dlBrushDab(grid, cx, cy, radius, strength, kind, dx, dy) {
+  if (!grid || radius <= 0 || strength <= 0) return;
+  const step = grid.step, gw = grid.gw, gh = grid.gh;
+  const gxA = Math.max(0, Math.floor((cx - radius) / step)), gxB = Math.min(gw - 1, Math.ceil((cx + radius) / step));
+  const gyA = Math.max(0, Math.floor((cy - radius) / step)), gyB = Math.min(gh - 1, Math.ceil((cy + radius) / step));
+  for (let gy = gyA; gy <= gyB; gy++) {
+    for (let gx = gxA; gx <= gxB; gx++) {
+      const vx = gx * step - cx, vy = gy * step - cy;
+      const d = Math.hypot(vx, vy);
+      if (d >= radius) continue;
+      const f = (1 + Math.cos(Math.PI * d / radius)) / 2;
+      let ax = 0, ay = 0;
+      if (kind === "push") {           // content follows the stroke
+        ax = dx * strength * f; ay = dy * strength * f;
+      } else if (kind === "pinch") {   // content pulled toward the centre
+        ax = -vx * 0.3 * strength * f; ay = -vy * 0.3 * strength * f;
+      } else if (kind === "bloat") {   // content pushed away from the centre
+        ax = vx * 0.3 * strength * f; ay = vy * 0.3 * strength * f;
+      } else if (kind === "twirl") {   // content rotated around the centre
+        ax = -vy * 0.25 * strength * f; ay = vx * 0.25 * strength * f;
+      }
+      if (!ax && !ay) continue;
+      const i = gy * gw + gx;
+      grid.ox[i] += ax; grid.oy[i] += ay;
+      const m = Math.hypot(grid.ox[i], grid.oy[i]);
+      if (m > grid.peak) grid.peak = m;
+    }
+  }
+}
+
+/* stroke snapshots for Undo: the grid is small (a few hundred nodes a
+ * side at most), so a plain copy per stroke is cheap */
+function dlBrushSnap(grid) {
+  return { ox: grid.ox.slice(), oy: grid.oy.slice(), peak: grid.peak };
+}
+function dlBrushRestore(grid, snap) {
+  grid.ox.set(snap.ox); grid.oy.set(snap.oy); grid.peak = snap.peak;
+}
+
+/* THE backward lookup the renderer uses: first the point warp (MLS),
+ * then the brush field — a dab moved content from home to home+offset,
+ * so the lookup steps back by the offset painted at the spot the point
+ * warp landed on. With no brush painted this is dlMapPoint untouched. */
+function dlInvMap(x, y, pts, brush) {
+  const m = dlMapPoint(x, y, pts);
+  if (!brush || brush.peak <= 0) return m;
+  const o = dlBrushOffsetAt(brush, m[0], m[1]);
+  return [m[0] - o[0], m[1] - o[1]];
+}
+
 /* draw the warped photo into ctx (points are NOT drawn here, so Export
  * reuses this as-is). The backward map is evaluated on a coarse grid and
  * interpolated — per-pixel MLS at full size would drag too slowly. */
@@ -4317,13 +4556,14 @@ function dlRenderWarp(ctx) {
   const src = D.src, pts = D.points;
   const W = src.w, H = src.h;
   const displaced = pts.some(p => p.qx !== p.px || p.qy !== p.py);
-  if (!pts.length || !displaced) { ctx.drawImage(D.srcCv, 0, 0); return; }
+  const brushOn = !!(D.brush && D.brush.peak > 0);
+  if ((!pts.length || !displaced) && !brushOn) { ctx.drawImage(D.srcCv, 0, 0); return; }
   const step = Math.max(1, Math.round(Math.max(W, H) / 300));
   const gw = Math.floor(W / step) + 1, gh = Math.floor(H / step) + 1;
   const mapX = new Float32Array(gw * gh), mapY = new Float32Array(gw * gh);
   for (let gy = 0; gy < gh; gy++) {
     for (let gx = 0; gx < gw; gx++) {
-      const m = dlMapPoint(gx * step, gy * step, pts);
+      const m = dlInvMap(gx * step, gy * step, pts, D.brush);
       mapX[gy * gw + gx] = m[0];
       mapY[gy * gw + gx] = m[1];
     }
@@ -4377,6 +4617,24 @@ function dlDrawPoints(ctx) {
   ctx.restore();
 }
 
+/* the brush cursor: a plain ring at the current brush size, drawn over
+ * the photo while the pointer hovers in Brush mode (the OS cursor is
+ * hidden over the canvas then, so the ring IS the cursor) */
+let dlHover = null;   // pointer position over the canvas, photo coords
+
+function dlDrawBrushCursor(ctx) {
+  const D = dlState();
+  if (D.mode !== "brush" || !dlHover || !D.src) return;
+  let accent = "#22c55e";
+  try { accent = getComputedStyle(document.documentElement).getPropertyValue("--violet").trim() || accent; } catch (e) {}
+  ctx.save();
+  ctx.beginPath(); ctx.arc(dlHover.x, dlHover.y, D.brushSize, 0, 7);
+  ctx.strokeStyle = "rgba(0,0,0,.45)"; ctx.lineWidth = 3.5; ctx.stroke();
+  ctx.beginPath(); ctx.arc(dlHover.x, dlHover.y, D.brushSize, 0, 7);
+  ctx.strokeStyle = accent; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.restore();
+}
+
 function dlDraw() {
   const D = dlState();
   const cv = $("#dlCanvas");
@@ -4384,12 +4642,22 @@ function dlDraw() {
   const ctx = cv.getContext("2d");
   dlRenderWarp(ctx);
   dlDrawPoints(ctx);
+  dlDrawBrushCursor(ctx);
   const ro = $("#dlReadout");
   if (ro) {
-    ro.textContent = D.name + " · " + D.src.w + " × " + D.src.h
-      + (D.points.length
+    let tail;
+    if (D.mode === "brush") {
+      const kindName = D.brushKind.charAt(0).toUpperCase() + D.brushKind.slice(1);
+      tail = " · brush: " + kindName
+        + (D.brush && D.brush.peak > 0 ? " · liquified" : " · drag on the photo to paint")
+        + (D.points.length ? " · " + D.points.length + (D.points.length === 1 ? " point" : " points") : "");
+    } else {
+      tail = D.points.length
         ? " · " + D.points.length + (D.points.length === 1 ? " point" : " points")
-        : " · no points yet — click the photo");
+        : " · no points yet — click the photo";
+      if (D.brush && D.brush.peak > 0) tail += " · liquified";
+    }
+    ro.textContent = D.name + " · " + D.src.w + " × " + D.src.h + tail;
   }
 }
 
@@ -4470,6 +4738,8 @@ function dlLoadSource(img, name) {
   D.srcCv = cv;
   D.imgW = img.width; D.imgH = img.height;
   D.points = [];
+  D.brush = null;          // the offset grid was painted for the old photo
+  D.brushUndo = [];
   D.name = name || "photo";
   if (img.close) img.close();
   const view = $("#dlCanvas");
@@ -4506,7 +4776,28 @@ function dlExportPNG() {
 /* ---------------- DragLab wiring ---------------- */
 
 let dlDrag = null;        // index of the point being dragged, or null
+let dlStroke = null;      // brush stroke in flight: { x, y } last dab spot
 let dlStaticWired = false;
+
+/* walk a brush stroke from its last spot to (x, y), stamping dabs about
+ * a quarter radius apart so fast strokes stay smooth instead of dotted.
+ * Push dabs carry the per-step pointer travel; the other brushes just
+ * stamp at each step. */
+function dlBrushStrokeTo(x, y) {
+  const D = dlState();
+  const grid = dlBrushGrid();
+  if (!grid || !dlStroke) return;
+  const strength = D.brushStrength / 100;
+  const dx = x - dlStroke.x, dy = y - dlStroke.y;
+  const dist = Math.hypot(dx, dy);
+  const spacing = Math.max(2, D.brushSize * 0.25);
+  const n = Math.max(1, Math.ceil(dist / spacing));
+  for (let i = 1; i <= n; i++) {
+    dlBrushDab(grid, dlStroke.x + dx * i / n, dlStroke.y + dy * i / n,
+      D.brushSize, strength, D.brushKind, dx / n, dy / n);
+  }
+  dlStroke.x = x; dlStroke.y = y;
+}
 
 function dlCanvasPos(e) {
   const cv = $("#dlCanvas");
@@ -4536,6 +4827,22 @@ function dlWireCanvas() {
     const D = dlState();
     if (!D.src || e.button === 2) return;
     const pos = dlCanvasPos(e);
+    if (D.mode === "brush") {
+      // a stroke starts: snapshot the grid for Undo (capped — the oldest
+      // strokes fall off), stamp one dab so a plain click still paints
+      // with Pinch/Bloat/Twirl, and remember where the stroke is
+      const grid = dlBrushGrid();
+      if (!grid) return;
+      D.brushUndo.push(dlBrushSnap(grid));
+      if (D.brushUndo.length > 20) D.brushUndo.shift();
+      dlStroke = { x: pos.x, y: pos.y };
+      dlBrushDab(grid, pos.x, pos.y, D.brushSize, D.brushStrength / 100, D.brushKind, 0, 0);
+      dlHover = pos;
+      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+      dlDraw();          // paint the first dab now (see the point note below)
+      e.preventDefault();
+      return;
+    }
     let idx = dlHitPoint(pos.x, pos.y);
     const isNew = idx < 0;
     if (isNew) {
@@ -4554,8 +4861,16 @@ function dlWireCanvas() {
     e.preventDefault();
   });
   cv.addEventListener("pointermove", (e) => {
-    if (dlDrag === null) return;
     const D = dlState();
+    if (D.mode === "brush") {
+      // the ring cursor tracks the pointer even between strokes; during
+      // a stroke the same moves stamp dabs along the way
+      if (D.src) dlHover = dlCanvasPos(e);
+      if (dlStroke && D.src) { dlBrushStrokeTo(dlHover.x, dlHover.y); dlQueueDraw(); }
+      else if (D.src) dlQueueDraw();
+      return;
+    }
+    if (dlDrag === null) return;
     const p = D.points[dlDrag];
     if (!p) { dlDrag = null; return; }
     const pos = dlCanvasPos(e);
@@ -4565,16 +4880,21 @@ function dlWireCanvas() {
     dlQueueDraw();
   });
   const endDrag = () => {
-    if (dlDrag === null) return;
+    const hadStroke = !!dlStroke;
+    dlStroke = null;
+    if (dlDrag === null && !hadStroke) return;
     dlDrag = null;
     dlDraw();          // final warp painted on release, rAF or no rAF
   };
   cv.addEventListener("pointerup", endDrag);
   cv.addEventListener("pointercancel", endDrag);
+  cv.addEventListener("pointerleave", () => {
+    if (dlHover !== null) { dlHover = null; dlQueueDraw(); }
+  });
   cv.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     const D = dlState();
-    if (!D.src) return;
+    if (!D.src || D.mode === "brush") return; // right-click deletes points in Points mode only
     const pos = dlCanvasPos(e);
     const idx = dlHitPoint(pos.x, pos.y);
     if (idx >= 0) { D.points.splice(idx, 1); dlQueueDraw(); }
@@ -4609,6 +4929,40 @@ function dlWireCanvas() {
   });
 }
 
+/* Reset is shared by both modes: points AND brush paint both clear —
+ * Reset means "back to the photo I loaded", whichever tools touched it */
+function dlResetAll() {
+  const D = dlState();
+  D.points = [];
+  D.brush = null;
+  D.brushUndo = [];
+  dlQueueDraw();
+}
+
+/* keep the panel honest about the current mode: the right control block
+ * visible, the right buttons lit, the canvas cursor matching */
+function dlSyncBrushUI() {
+  const D = dlState();
+  const brush = D.mode === "brush";
+  const pc = $("#dlPointsCtl"), bc = $("#dlBrushCtl");
+  if (pc) pc.hidden = brush;
+  if (bc) bc.hidden = !brush;
+  document.querySelectorAll("#dlModeSeg .seg-btn").forEach(b =>
+    b.classList.toggle("active", b.dataset.dlmode === D.mode));
+  document.querySelectorAll("#dlBrushSeg .seg-btn").forEach(b =>
+    b.classList.toggle("active", b.dataset.brush === D.brushKind));
+  const size = $("#dlBrushSize"), sizeVal = $("#dlBrushSizeVal");
+  if (size) { size.value = D.brushSize; if (sizeVal) sizeVal.textContent = D.brushSize + "px"; }
+  const str = $("#dlBrushStrength"), strVal = $("#dlBrushStrengthVal");
+  if (str) { str.value = D.brushStrength; if (strVal) strVal.textContent = D.brushStrength + "%"; }
+  const cv = $("#dlCanvas");
+  if (cv) cv.classList.toggle("dl-brush", brush);
+  const hint = $("#dlStageHint");
+  if (hint) hint.textContent = brush
+    ? "Drag on the photo to liquify it — push, pinch, bloat or twirl."
+    : "Click to add a point, drag it to pull the picture.";
+}
+
 function wireDraglab() {
   $("#dlSample").onclick = () => dlLoadSource(dlMakeSample(), "sample face");
   $("#dlPick").onclick = () => $("#dlFile").click();
@@ -4620,16 +4974,46 @@ function wireDraglab() {
     const D = dlState();
     if (D.points.length) { D.points.pop(); dlQueueDraw(); }
   };
-  $("#dlReset").onclick = () => {
-    const D = dlState();
-    D.points = [];
-    dlQueueDraw();
-  };
+  $("#dlReset").onclick = dlResetAll;
+  const resetB = $("#dlResetB");
+  if (resetB) resetB.onclick = dlResetAll;
   $("#dlExport").onclick = dlExportPNG;
+  document.querySelectorAll("#dlModeSeg .seg-btn").forEach(b => {
+    b.onclick = () => {
+      const D = dlState();
+      if (D.mode === b.dataset.dlmode) return;
+      D.mode = b.dataset.dlmode;   // switching modes never wipes the other mode's work
+      dlSyncBrushUI();
+      dlDraw();
+    };
+  });
+  document.querySelectorAll("#dlBrushSeg .seg-btn").forEach(b => {
+    b.onclick = () => { dlState().brushKind = b.dataset.brush; dlSyncBrushUI(); };
+  });
+  const size = $("#dlBrushSize");
+  if (size) size.oninput = () => {
+    const D = dlState();
+    D.brushSize = +size.value;
+    const v = $("#dlBrushSizeVal"); if (v) v.textContent = D.brushSize + "px";
+    dlQueueDraw();   // the ring cursor resizes with the slider
+  };
+  const str = $("#dlBrushStrength");
+  if (str) str.oninput = () => {
+    const D = dlState();
+    D.brushStrength = +str.value;
+    const v = $("#dlBrushStrengthVal"); if (v) v.textContent = D.brushStrength + "%";
+  };
+  const undoStroke = $("#dlBrushUndo");
+  if (undoStroke) undoStroke.onclick = () => {
+    const D = dlState();
+    const snap = D.brushUndo.pop();
+    if (snap && D.brush) { dlBrushRestore(D.brush, snap); dlQueueDraw(); }
+  };
   if (!dlStaticWired) {
     dlStaticWired = true;
     dlWireCanvas();
   }
+  dlSyncBrushUI();
   syncDraglabMode();
 }
 
@@ -4980,7 +5364,11 @@ function coBuildTensor(px) {
 }
 
 /* the model returns several maps; the first is the fused saliency map.
- * Min-max normalize it into a 0..1 matte (the rembg recipe). Pure math. */
+ * Min-max normalize it into the full 0..255 range (the rembg recipe):
+ * the map's own min becomes 0 and its max becomes 255, so even a faint
+ * map spans the whole range before the cut / feather sliders threshold
+ * it. A flat map (max == min) stays all-zero. The matte is carried in
+ * 0..255 from here on. Pure math. */
 function coNormalizeMatte(raw) {
   const out = new Float32Array(raw.length);
   let mn = Infinity, mx = -Infinity;
@@ -4990,20 +5378,21 @@ function coNormalizeMatte(raw) {
   }
   const range = mx - mn;
   if (!(range > 1e-6)) return out; // flat map — nothing stands out
-  for (let i = 0; i < raw.length; i++) out[i] = (raw[i] - mn) / range;
+  for (let i = 0; i < raw.length; i++) out[i] = ((raw[i] - mn) / range) * 255;
   return out;
 }
 
-/* apply a matte to source pixels. threshold (0..100) sets the cut point;
- * feather (0..24) widens the soft band around it. Returns fresh RGBA
- * bytes — the source is never modified. Pure math: the sliders re-run
- * this on every input event without touching the model. */
+/* apply a matte (one 0..255 value per pixel) to source pixels.
+ * threshold (0..100) sets the cut point; feather (0..24) widens the
+ * soft band around it. Returns fresh RGBA bytes — the source is never
+ * modified. Pure math: the sliders re-run this on every input event
+ * without touching the model. */
 function coComposite(srcData, matte, threshold, feather) {
   const out = new Uint8ClampedArray(srcData);
   const t = threshold / 100;
   const soft = feather <= 0 ? 0 : 0.02 + (feather / 24) * 0.23;
   for (let i = 0; i < matte.length; i++) {
-    const m = matte[i];
+    const m = matte[i] / 255;
     let a;
     if (soft <= 0) {
       a = m >= t ? 1 : 0;
@@ -5024,7 +5413,7 @@ function coUpsampleMatte(matte, w, h) {
   const sctx = small.getContext("2d");
   const id = sctx.createImageData(CO_SIZE, CO_SIZE);
   for (let i = 0; i < matte.length; i++) {
-    const v = Math.max(0, Math.min(255, Math.round(matte[i] * 255)));
+    const v = Math.max(0, Math.min(255, Math.round(matte[i])));
     id.data[i * 4] = v; id.data[i * 4 + 1] = v; id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255;
   }
   sctx.putImageData(id, 0, 0);
@@ -5036,7 +5425,7 @@ function coUpsampleMatte(matte, w, h) {
   bctx.drawImage(small, 0, 0, w, h);
   const px = bctx.getImageData(0, 0, w, h).data;
   const out = new Float32Array(w * h);
-  for (let i = 0; i < out.length; i++) out[i] = px[i * 4] / 255;
+  for (let i = 0; i < out.length; i++) out[i] = px[i * 4]; // stays 0..255
   return out;
 }
 
@@ -5274,6 +5663,2738 @@ function wireCutout() {
   syncCutoutMode();
 }
 
+/* ================= v8.4: Upscale Lab — AI enlargement =================
+ * FrameLab's own upscaler. A compact super-resolution model
+ * (realesr-general-x4v3 from the Real-ESRGAN project, BSD-3-Clause)
+ * runs entirely on the visitor's device through the shared AI runtime
+ * above: the image never leaves the browser, there is no server and no
+ * login. The model eats a fixed 128×128 frame and returns 512×512, so
+ * bigger images run as overlapping tiles whose outputs are blended
+ * with a feathered running average — no visible seams. A non-AI Pixel
+ * mode (nearest-neighbour plus a hand-rolled EPX filter) covers pixel
+ * art, which AI upscalers only smear. */
+
+const UPSCALE_MODEL_URL = "assets/models/realesr-x4v3.onnx";
+const UP_TILE = 128;  // the model's fixed input frame
+const UP_SCALE = 4;   // the model's fixed enlargement
+const UP_HALO = 16;   // input px of neighbour context blended per tile
+const UP_CAP = 1024;  // working cap on the long edge, same as Cutout
+
+function upState() {
+  if (!state.upscale) {
+    state.upscale = {
+      src: null, srcCv: null, imgW: 0, imgH: 0, name: "image",
+      out: null, outKind: "", mode: "ai",
+      pxScale: 2, pxAlgo: "nearest", exportScale: 4,
+      compare: 50, busy: false, cancel: false,
+    };
+  }
+  return state.upscale;
+}
+
+function syncUpscaleMode() {
+  const on = state.category === "upscale";
+  const aside = document.querySelector("aside.controls");
+  const stage = document.querySelector("section.stage-panel");
+  if (aside) aside.classList.toggle("mode-upscale", on);
+  if (stage) stage.classList.toggle("mode-upscale", on);
+  document.body.classList.toggle("mode-upscale", on);
+  const sec = $("#upscale");
+  if (sec) sec.hidden = !on;
+  syncToolChrome();
+}
+
+/* ---- tiling math (pure) ----
+ * Cores partition the image exactly; each tile's 128×128 window is its
+ * core grown by UP_HALO of context on every side. Windows may start
+ * negative or run past the far edge — extraction replicates the edge
+ * pixels into the overhang. */
+function upTilePlan(w, h) {
+  const step = UP_TILE - 2 * UP_HALO;
+  const tiles = [];
+  for (let cy = 0; cy < h; cy += step) {
+    for (let cx = 0; cx < w; cx += step) {
+      tiles.push({
+        cx, cy,
+        cw: Math.min(step, w - cx), ch: Math.min(step, h - cy),
+        sx: cx - UP_HALO, sy: cy - UP_HALO,
+      });
+    }
+  }
+  return tiles;
+}
+
+/* blend weight along one axis at source-space position g for a window
+ * starting at `start`: 1 deep inside, ramping to 0 across 2×HALO at an
+ * edge that has a neighbour; an edge on the image border keeps 1. */
+function upAxisWeight(start, imgSize, g) {
+  const F = 2 * UP_HALO;
+  let a = 1;
+  if (start > 0) a = Math.min(a, (g - start) / F);
+  if (start + UP_TILE < imgSize) a = Math.min(a, (start + UP_TILE - g) / F);
+  return a < 0 ? 0 : a > 1 ? 1 : a;
+}
+
+/* a tile's blend weight at one source-space point. Pure math. */
+function upTileWeight(tile, w, h, gx, gy) {
+  return upAxisWeight(tile.sx, w, gx) * upAxisWeight(tile.sy, h, gy);
+}
+
+/* the same weights sampled across one output tile (512 values per
+ * axis) — the blend loop uses these instead of recomputing per pixel.
+ * Identical values to upTileWeight by construction. Pure math. */
+function upTileWeights1D(tile, w, h) {
+  const OT = UP_TILE * UP_SCALE;
+  const wx = new Float32Array(OT), wy = new Float32Array(OT);
+  for (let o = 0; o < OT; o++) {
+    wx[o] = upAxisWeight(tile.sx, w, tile.sx + o / UP_SCALE);
+    wy[o] = upAxisWeight(tile.sy, h, tile.sy + o / UP_SCALE);
+  }
+  return { wx, wy };
+}
+
+function upClamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+/* build the model's input tensor from a 128×128 RGBA frame: CHW
+ * order, 0..1 range, no normalization — the Real-ESRGAN recipe. */
+function upBuildTensor(px) {
+  const n = UP_TILE * UP_TILE;
+  const out = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    for (let c = 0; c < 3; c++) out[c * n + i] = px[i * 4 + c] / 255;
+  }
+  return out;
+}
+
+/* replicate the valid rect's edge pixels over the rest of a square
+ * tile buffer (the part of the window that hangs past the image).
+ * Source pixels are only ever read from inside the valid rect, which
+ * is never written — so one in-place pass is exact. Pure math. */
+function upFillEdges(data, size, vx0, vy0, vw, vh) {
+  const vx1 = vx0 + vw - 1, vy1 = vy0 + vh - 1;
+  for (let y = 0; y < size; y++) {
+    const sy = y < vy0 ? vy0 : y > vy1 ? vy1 : y;
+    for (let x = 0; x < size; x++) {
+      if (x >= vx0 && x <= vx1 && y >= vy0 && y <= vy1) continue;
+      const sx = x < vx0 ? vx0 : x > vx1 ? vx1 : x;
+      const s = (sy * size + sx) * 4, d = (y * size + x) * 4;
+      data[d] = data[s]; data[d + 1] = data[s + 1];
+      data[d + 2] = data[s + 2]; data[d + 3] = data[s + 3];
+    }
+  }
+}
+
+/* EPX / Scale2×: every pixel becomes a 2×2 block; a corner borrows a
+ * neighbour's colour when the two neighbours along that edge agree
+ * and the opposite ones differ, which turns jagged diagonals into
+ * smooth ones. Colour equality is on the packed RGBA value, edges
+ * replicate. Hand-rolled — no library. Pure math. */
+function upEpxPass(data, w, h) {
+  const ow = w * 2;
+  const out = new Uint8ClampedArray(ow * h * 2 * 4);
+  const src = new Uint32Array(data.buffer, data.byteOffset, w * h);
+  const dst = new Uint32Array(out.buffer);
+  const at = (x, y) => src[
+    Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))
+  ];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const P = at(x, y), A = at(x, y - 1), B = at(x - 1, y),
+            C = at(x + 1, y), D = at(x, y + 1);
+      const o = (y * 2) * ow + x * 2;
+      dst[o]            = (B === A && B !== D && A !== C) ? A : P;
+      dst[o + 1]        = (A === C && A !== B && C !== D) ? C : P;
+      dst[o + ow]       = (B === D && B !== A && D !== C) ? B : P;
+      dst[o + ow + 1]   = (D === C && D !== B && C !== A) ? C : P;
+    }
+  }
+  return out;
+}
+
+/* ---- stage + drawing ---- */
+
+function upStatus(msg) {
+  const ro = $("#upReadout");
+  if (ro) ro.textContent = msg;
+}
+
+function upProgress(frac) {
+  const row = $("#upProgressRow"), bar = $("#upProgressBar");
+  if (!row || !bar) return;
+  if (frac === null || frac === undefined) {
+    row.hidden = true;
+    bar.style.width = "0%";
+    return;
+  }
+  row.hidden = false;
+  bar.style.width = Math.round(frac * 100) + "%";
+}
+
+function upDraw(note) {
+  const U = upState();
+  const cv = $("#upCanvas");
+  if (!cv || !U.src) return;
+  const ctx = cv.getContext("2d");
+  if (!U.out) {
+    if (cv.width !== U.src.w) cv.width = U.src.w;
+    if (cv.height !== U.src.h) cv.height = U.src.h;
+    ctx.drawImage(U.srcCv, 0, 0);
+    const row0 = $("#upCompareRow");
+    if (row0) row0.hidden = true;
+    upStatus(U.name + " · " + U.src.w + " × " + U.src.h + " · ready — hit " +
+      (U.mode === "ai" ? "Upscale ×4" : "Enlarge"));
+    return;
+  }
+  const ow = U.out.width, oh = U.out.height;
+  if (cv.width !== ow) cv.width = ow;
+  if (cv.height !== oh) cv.height = oh;
+  ctx.drawImage(U.out, 0, 0);
+  /* before/after: the original covers the left `compare`% of the frame */
+  const split = Math.round(ow * U.compare / 100);
+  if (split > 0) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, split, oh);
+    ctx.clip();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(U.srcCv, 0, 0, ow, oh);
+    ctx.restore();
+    if (split < ow) {
+      ctx.fillStyle = "rgba(255,255,255,.85)";
+      ctx.fillRect(split - 1, 0, 2, oh);
+    }
+  }
+  const row = $("#upCompareRow");
+  if (row) row.hidden = false;
+  upStatus(U.name + " · " + U.src.w + " × " + U.src.h + " → " + ow + " × " + oh +
+    (U.outKind === "ai" ? " · AI ×4" : " · pixel ×" + (ow / U.src.w)) +
+    " — drag the slider to compare" + (note ? " · " + note : ""));
+}
+
+/* the sample: the Cutout robot card shrunk to a small photo first, so
+ * the ×4 has visible work to do. Drawn in code, zero downloads. */
+function upMakeSample() {
+  const big = coMakeSample();
+  const cv = document.createElement("canvas");
+  cv.width = 192; cv.height = 144;
+  const c = cv.getContext("2d");
+  c.imageSmoothingEnabled = true;
+  c.imageSmoothingQuality = "high";
+  c.drawImage(big, 0, 0, cv.width, cv.height);
+  return cv;
+}
+
+/* bring an image in (file, paste, drop or the sample). Working size
+ * is capped at 1024px on the long edge, same as Cutout Lab. */
+function upLoadSource(img, name) {
+  const U = upState();
+  if (U.busy) return;
+  const scale = Math.min(1, UP_CAP / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const cx2 = cv.getContext("2d", { willReadFrequently: true });
+  cx2.drawImage(img, 0, 0, w, h);
+  U.src = { w, h };
+  U.srcCv = cv;
+  U.imgW = img.width; U.imgH = img.height;
+  U.out = null; U.outKind = "";
+  U.name = name || "image";
+  if (img.close) img.close();
+  const view = $("#upCanvas");
+  if (view) { view.width = w; view.height = h; }
+  const empty = $("#upEmpty");
+  if (empty) empty.hidden = true;
+  upProgress(null);
+  upDraw();
+}
+
+async function upLoadFile(file) {
+  if (!file) return;
+  try {
+    const bmp = await createImageBitmap(file);
+    upLoadSource(bmp, file.name || "image");
+  } catch (err) {
+    upStatus("couldn't read that image — try a PNG or JPG.");
+  }
+}
+
+/* ---- AI run ---- */
+
+function upSetBusy(b) {
+  const U = upState();
+  U.busy = b;
+  const run = $("#upRun");
+  if (run) run.textContent = b ? "Cancel" : "Upscale ×4";
+}
+
+/* draw one tile's 128×128 window out of the source into tctx; the
+ * part of the window that hangs past the image is filled by
+ * replicating the nearest edge pixels. */
+function upExtractTile(U, tile, tctx) {
+  const w = U.src.w, h = U.src.h;
+  const dx0 = Math.max(0, -tile.sx), dy0 = Math.max(0, -tile.sy);
+  const sx0 = Math.max(0, tile.sx), sy0 = Math.max(0, tile.sy);
+  const vw = Math.min(UP_TILE - dx0, w - sx0), vh = Math.min(UP_TILE - dy0, h - sy0);
+  tctx.clearRect(0, 0, UP_TILE, UP_TILE);
+  tctx.drawImage(U.srcCv, sx0, sy0, vw, vh, dx0, dy0, vw, vh);
+  if (dx0 > 0 || dy0 > 0 || vw < UP_TILE || vh < UP_TILE) {
+    const id = tctx.getImageData(0, 0, UP_TILE, UP_TILE);
+    upFillEdges(id.data, UP_TILE, dx0, dy0, vw, vh);
+    tctx.putImageData(id, 0, 0);
+  }
+}
+
+/* blend one finished output tile (CHW floats, 512×512) into the
+ * result with the feathered running average:
+ * out = (out·W + tile·a) / (W + a), W += a — every result pixel is a
+ * convex mix of the tiles that cover it, so seams can't darken or
+ * gap. Alpha is handled separately by the caller (the model is
+ * RGB-only); px alpha bytes are left untouched here. */
+function upBlendTile(px, wsum, ow, oh, tile, w, h, data) {
+  const OT = UP_TILE * UP_SCALE;
+  const n = OT * OT;
+  const wts = upTileWeights1D(tile, w, h);
+  const bx = tile.sx * UP_SCALE, by = tile.sy * UP_SCALE;
+  const x0 = Math.max(0, bx), y0 = Math.max(0, by);
+  const x1 = Math.min(ow, bx + OT), y1 = Math.min(oh, by + OT);
+  for (let Y = y0; Y < y1; Y++) {
+    const oy = Y - by;
+    const wyv = wts.wy[oy];
+    if (wyv <= 0) continue;
+    for (let X = x0; X < x1; X++) {
+      const a = wts.wx[X - bx] * wyv;
+      if (a <= 0) continue;
+      const i = Y * ow + X, j = i * 4, t = oy * OT + (X - bx);
+      const W = wsum[i], nw = W + a;
+      px[j]     = (px[j]     * W + upClamp01(data[t])         * 255 * a) / nw;
+      px[j + 1] = (px[j + 1] * W + upClamp01(data[n + t])     * 255 * a) / nw;
+      px[j + 2] = (px[j + 2] * W + upClamp01(data[2 * n + t]) * 255 * a) / nw;
+      wsum[i] = nw;
+    }
+  }
+}
+
+async function upRun() {
+  const U = upState();
+  if (U.busy) { U.cancel = true; return; } // the run button doubles as Cancel
+  if (!U.src) { upStatus("Load an image or the sample first."); return; }
+  upSetBusy(true);
+  U.cancel = false;
+  try {
+    upStatus("Downloading model once… (about 5 MB)");
+    const session = await aiLoadSession(UPSCALE_MODEL_URL, (p) => {
+      if (p < 1) upStatus("Downloading model once… " + Math.round(p * 100) + "%");
+    });
+    const w = U.src.w, h = U.src.h;
+    const ow = w * UP_SCALE, oh = h * UP_SCALE;
+    const plan = upTilePlan(w, h);
+    const outCv = document.createElement("canvas");
+    outCv.width = ow; outCv.height = oh;
+    const octx = outCv.getContext("2d", { willReadFrequently: true });
+    const id = octx.createImageData(ow, oh);
+    const wsum = new Float32Array(ow * oh);
+    /* the model is RGB-only — alpha rides a plain smooth ×4 pass */
+    const aCv = document.createElement("canvas");
+    aCv.width = ow; aCv.height = oh;
+    const actx = aCv.getContext("2d", { willReadFrequently: true });
+    actx.imageSmoothingEnabled = true;
+    actx.imageSmoothingQuality = "high";
+    actx.drawImage(U.srcCv, 0, 0, ow, oh);
+    const aPx = actx.getImageData(0, 0, ow, oh).data;
+    const tileCv = document.createElement("canvas");
+    tileCv.width = UP_TILE; tileCv.height = UP_TILE;
+    const tctx = tileCv.getContext("2d", { willReadFrequently: true });
+    let doneTiles = 0;
+    for (const tile of plan) {
+      if (U.cancel) throw new Error("cancelled");
+      upExtractTile(U, tile, tctx);
+      const tensor = upBuildTensor(tctx.getImageData(0, 0, UP_TILE, UP_TILE).data);
+      const feeds = {};
+      feeds[session.inputNames[0]] = { data: tensor, dims: [1, 3, UP_TILE, UP_TILE] };
+      const results = await session.run(feeds);
+      const raw = results[session.outputNames[0]];
+      if (!raw || !raw.data) throw new Error("the model returned nothing");
+      upBlendTile(id.data, wsum, ow, oh, tile, w, h, raw.data);
+      doneTiles++;
+      upProgress(doneTiles / plan.length);
+      upStatus("Upscaling… tile " + doneTiles + " of " + plan.length + " (" + session.backend + ")");
+    }
+    for (let i = 0; i < ow * oh; i++) id.data[i * 4 + 3] = aPx[i * 4 + 3];
+    octx.putImageData(id, 0, 0);
+    U.out = outCv;
+    U.outKind = "ai";
+    upProgress(null);
+    upDraw();
+  } catch (err) {
+    upProgress(null);
+    upStatus(err && err.message === "cancelled"
+      ? "Upscale cancelled."
+      : "Upscale failed: " + (err && err.message ? err.message : err));
+  }
+  upSetBusy(false);
+}
+
+/* ---- Pixel mode run ---- */
+
+function upPixelRun() {
+  const U = upState();
+  if (!U.src) { upStatus("Load an image or the sample first."); return; }
+  const s = U.pxScale;
+  let cv, note = "";
+  if (U.pxAlgo === "epx" && (s === 2 || s === 4)) {
+    const sctx = U.srcCv.getContext("2d", { willReadFrequently: true });
+    let cur = sctx.getImageData(0, 0, U.src.w, U.src.h);
+    const passes = s === 4 ? 2 : 1;
+    for (let p = 0; p < passes; p++) {
+      const out = upEpxPass(cur.data, cur.width, cur.height);
+      cur = new ImageData(out, cur.width * 2, cur.height * 2);
+    }
+    cv = document.createElement("canvas");
+    cv.width = cur.width; cv.height = cur.height;
+    cv.getContext("2d").putImageData(cur, 0, 0);
+  } else {
+    if (U.pxAlgo === "epx") note = "EPX works at ×2 and ×4 — nearest used for ×3";
+    cv = document.createElement("canvas");
+    cv.width = U.src.w * s; cv.height = U.src.h * s;
+    const c = cv.getContext("2d");
+    c.imageSmoothingEnabled = false;
+    c.drawImage(U.srcCv, 0, 0, cv.width, cv.height);
+  }
+  U.out = cv;
+  U.outKind = "pixel";
+  upDraw(note);
+}
+
+function upExportPNG() {
+  const U = upState();
+  if (U.busy) return;
+  if (!U.out) { upStatus("Nothing to export yet — upscale something first."); return; }
+  let cv = U.out;
+  if (U.outKind === "ai" && U.exportScale === 2) {
+    const half = document.createElement("canvas");
+    half.width = Math.max(1, Math.round(cv.width / 2));
+    half.height = Math.max(1, Math.round(cv.height / 2));
+    const hc = half.getContext("2d");
+    hc.imageSmoothingEnabled = true;
+    hc.imageSmoothingQuality = "high";
+    hc.drawImage(cv, 0, 0, half.width, half.height);
+    cv = half;
+  }
+  downloadCanvas(cv, "m4ster-upscale-" + cv.width + "x" + cv.height + ".png");
+}
+
+/* ---------------- Upscale Lab wiring ---------------- */
+
+let upStaticWired = false;
+
+function upWireStage() {
+  // drag & drop onto the stage box
+  const box = $("#upStageBox");
+  if (box) {
+    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.add("up-over");
+    }));
+    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.remove("up-over");
+    }));
+    box.addEventListener("drop", (e) => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) upLoadFile(f);
+    });
+  }
+  // paste an image while the Upscale lane is open
+  document.addEventListener("paste", (e) => {
+    if (state.category !== "upscale") return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.type && it.type.indexOf("image/") === 0) {
+        const f = it.getAsFile();
+        if (f) { upLoadFile(f); e.preventDefault(); }
+        return;
+      }
+    }
+  });
+}
+
+function wireUpscale() {
+  $("#upSample").onclick = () => upLoadSource(upMakeSample(), "sample robot (small)");
+  $("#upPick").onclick = () => $("#upFile").click();
+  $("#upFile").onchange = (e) => {
+    upLoadFile(e.target.files[0]);
+    e.target.value = "";
+  };
+  $("#upRun").onclick = upRun;
+  $("#upExport").onclick = upExportPNG;
+  $("#upPxApply").onclick = () => { if (!upState().busy) upPixelRun(); };
+  document.querySelectorAll("#upModeSeg .seg-btn").forEach(b => {
+    b.onclick = () => {
+      const U = upState();
+      U.mode = b.dataset.upmode;
+      document.querySelectorAll("#upModeSeg .seg-btn").forEach(x =>
+        x.classList.toggle("active", x === b));
+      const ai = $("#upAiRow"), px = $("#upPixelRow");
+      if (ai) ai.hidden = U.mode !== "ai";
+      if (px) px.hidden = U.mode !== "pixel";
+      if (U.src && !U.out) upDraw();
+    };
+  });
+  const es = $("#upExportScale");
+  if (es) es.onchange = () => { upState().exportScale = +es.value; };
+  const ps = $("#upPxScale");
+  if (ps) ps.onchange = () => { upState().pxScale = +ps.value; };
+  const pa = $("#upPxAlgo");
+  if (pa) pa.onchange = () => { upState().pxAlgo = pa.value; };
+  const cmp = $("#upCompare");
+  if (cmp) cmp.oninput = () => {
+    const U = upState();
+    U.compare = +cmp.value;
+    if (U.out) upDraw();
+  };
+  if (!upStaticWired) {
+    upStaticWired = true;
+    upWireStage();
+  }
+  if (upState().busy) upSetBusy(true);
+  syncUpscaleMode();
+}
+
+/* ================= v8.5: Atlas Packer — loose frames → one sheet =================
+ * The inverse of the Slicer: drop in many loose sprite images and get
+ * back ONE packed atlas PNG plus an engine-ready manifest. Pure JS —
+ * no models, no server, no login; everything runs in the visitor's
+ * browser. Packing is a hand-rolled MaxRects packer. Sprites are
+ * trimmed of their transparent borders before packing, and every
+ * manifest format records the trim, so engines restore each original
+ * frame exactly. Identical frames are packed once and listed under
+ * every name they arrived with. */
+
+const AT_PNG_NAME = "m4ster-atlas.png";
+
+function atState() {
+  if (!state.atlasPack) {
+    state.atlasPack = {
+      items: [],      // [{ name, cv, data }] — every image the user added
+      packed: null,   // { canvas, frames, w, h, used } after a Pack
+      pad: 2, extrude: true, pot: false, labels: false,
+      format: "json",
+    };
+  }
+  return state.atlasPack;
+}
+
+function syncAtlasMode() {
+  const on = state.category === "atlas";
+  const aside = document.querySelector("aside.controls");
+  const stage = document.querySelector("section.stage-panel");
+  if (aside) aside.classList.toggle("mode-atlas", on);
+  if (stage) stage.classList.toggle("mode-atlas", on);
+  document.body.classList.toggle("mode-atlas", on);
+  const sec = $("#atlas");
+  if (sec) sec.hidden = !on;
+  syncToolChrome();
+}
+
+function atStatus(msg) {
+  const ro = $("#atReadout");
+  if (ro) ro.textContent = msg;
+}
+
+/* ---- pure helpers: hash, trim, power of two ---- */
+
+/* a short stable hash of a pixel buffer (~2000 samples spread over
+ * the whole image, seeded with the dimensions). Identical frames
+ * hash the same, which is all dedupe needs — a freak collision would
+ * merge two near-identical frames, never crash. */
+function atPixelHash(data, w, h) {
+  let h1 = 0x811c9dc5 ^ (w | 0), h2 = 0x01000193 ^ (h | 0);
+  const step = Math.max(1, Math.floor(data.length / 2048));
+  for (let i = 0; i < data.length; i += step) {
+    h1 = Math.imul(h1 ^ data[i], 0x01000193);
+    h2 = Math.imul(h2 + data[i], 0x85ebca6b);
+  }
+  return data.length + ":" + (h1 >>> 0).toString(36) + ":" + (h2 >>> 0).toString(36);
+}
+
+/* the bounding box of the non-transparent pixels of an RGBA buffer,
+ * or null when the image is fully transparent. Pure math. */
+function atTrimBox(data, w, h) {
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w * 4;
+    for (let x = 0; x < w; x++) {
+      if (data[row + x * 4 + 3] > 0) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) return null;
+  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+/* smallest power of two >= n. Pure math. */
+function atNextPot(n) {
+  let p = 1;
+  while (p < n) p *= 2;
+  return p;
+}
+
+/* ---- MaxRects packing (pure) ----
+ * Keep a list of free rectangles. Each sprite takes the free rect
+ * with the least wasted area (best-area-fit; ties go to the tighter
+ * short side), then every free rect it overlaps is split around it
+ * and rects contained in others are pruned. Sprites pack as their
+ * trimmed size plus padding on every side — the padding lives in the
+ * footprint, never in the recorded frame rect. */
+
+function atRectsOverlap(a, b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+/* is b fully inside a? */
+function atRectContains(a, b) {
+  return b.x >= a.x && b.y >= a.y && b.x + b.w <= a.x + a.w && b.y + b.h <= a.y + a.h;
+}
+
+/* split free rect f around placed rect p: up to four leftovers. */
+function atSplitFree(f, p) {
+  const out = [];
+  if (p.x > f.x) out.push({ x: f.x, y: f.y, w: p.x - f.x, h: f.h });
+  if (p.x + p.w < f.x + f.w) out.push({ x: p.x + p.w, y: f.y, w: f.x + f.w - (p.x + p.w), h: f.h });
+  if (p.y > f.y) out.push({ x: f.x, y: f.y, w: f.w, h: p.y - f.y });
+  if (p.y + p.h < f.y + f.h) out.push({ x: f.x, y: p.y + p.h, w: f.w, h: f.y + f.h - (p.y + p.h) });
+  return out.filter(r => r.w > 0 && r.h > 0);
+}
+
+/* drop free rects that another free rect fully covers (an exact
+ * duplicate counts as covered by its earlier twin). */
+function atPruneFree(list) {
+  return list.filter((f, i) => !list.some((g, j) => {
+    if (i === j || !atRectContains(g, f)) return false;
+    const ga = g.w * g.h, fa = f.w * f.h;
+    return ga > fa || j < i;
+  }));
+}
+
+/* place every rect, in the given order, into a binW × binH bin.
+ * Returns the placements [{ x, y, w, h, ref }] or null when one
+ * rect fits nowhere. */
+function atTryPack(rects, binW, binH) {
+  let free = [{ x: 0, y: 0, w: binW, h: binH }];
+  const placed = [];
+  for (const r of rects) {
+    let best = null, bestWaste = Infinity, bestShort = Infinity;
+    for (const f of free) {
+      if (r.w > f.w || r.h > f.h) continue;
+      const waste = f.w * f.h - r.w * r.h;
+      const short = Math.min(f.w - r.w, f.h - r.h);
+      if (waste < bestWaste || (waste === bestWaste && short < bestShort)) {
+        best = f; bestWaste = waste; bestShort = short;
+      }
+    }
+    if (!best) return null;
+    const p = { x: best.x, y: best.y, w: r.w, h: r.h, ref: r.ref };
+    placed.push(p);
+    const next = [];
+    for (const f of free) {
+      if (!atRectsOverlap(f, p)) { next.push(f); continue; }
+      for (const s of atSplitFree(f, p)) next.push(s);
+    }
+    free = atPruneFree(next);
+  }
+  return placed;
+}
+
+/* pack the unique sprites (tallest first). The bin starts near the
+ * square root of the total area and doubles its shorter side until
+ * everything fits; the result is then cropped to the used extent
+ * (and rounded up to powers of two when `pot` is set — rounding only
+ * ever grows the bin, so placements stay valid). */
+function atPackUnique(uniques, pad, pot) {
+  const rects = uniques.map(u => ({ w: u.tw + pad * 2, h: u.th + pad * 2, ref: u }));
+  rects.sort((a, b) => b.h - a.h || b.w - a.w);
+  let totalArea = 0, maxW = 0, maxH = 0;
+  for (const r of rects) {
+    totalArea += r.w * r.h;
+    if (r.w > maxW) maxW = r.w;
+    if (r.h > maxH) maxH = r.h;
+  }
+  const side = Math.max(16, Math.ceil(Math.sqrt(totalArea)));
+  let binW = Math.max(side, maxW), binH = Math.max(side, maxH);
+  let placed = null;
+  for (let tries = 0; tries < 64 && !placed; tries++) {
+    placed = atTryPack(rects, binW, binH);
+    if (!placed) { if (binW <= binH) binW *= 2; else binH *= 2; }
+  }
+  if (!placed) return null;
+  let usedW = 0, usedH = 0;
+  for (const p of placed) {
+    if (p.x + p.w > usedW) usedW = p.x + p.w;
+    if (p.y + p.h > usedH) usedH = p.y + p.h;
+  }
+  return {
+    placed,
+    w: pot ? atNextPot(usedW) : usedW,
+    h: pot ? atNextPot(usedH) : usedH,
+  };
+}
+
+/* ---- stage drawing ---- */
+
+/* paint the packed sheet onto a fresh canvas: each unique sprite
+ * once, plus — when extrude is on and there is padding to hold it —
+ * a 1px ring that repeats the sprite's edge pixels, so GPU filtering
+ * at the frame border samples the sprite itself, not its neighbour.
+ * The ring stays inside the sprite's padded footprint, which never
+ * overlaps another sprite. */
+function atRenderSheet(A) {
+  const P = A.packed;
+  const cv = document.createElement("canvas");
+  cv.width = P.w; cv.height = P.h;
+  const ctx = cv.getContext("2d");
+  for (const fr of P.frames) {
+    const u = fr.u, sx = u.trim.x, sy = u.trim.y;
+    ctx.drawImage(u.cv, sx, sy, fr.w, fr.h, fr.x, fr.y, fr.w, fr.h);
+    if (A.extrude && A.pad > 0) {
+      const x = fr.x, y = fr.y, w = fr.w, h = fr.h;
+      ctx.drawImage(u.cv, sx, sy, 1, h, x - 1, y, 1, h);                 // left column
+      ctx.drawImage(u.cv, sx + w - 1, sy, 1, h, x + w, y, 1, h);         // right column
+      ctx.drawImage(u.cv, sx, sy, w, 1, x, y - 1, w, 1);                 // top row
+      ctx.drawImage(u.cv, sx, sy + h - 1, w, 1, x, y + h, w, 1);         // bottom row
+      ctx.drawImage(u.cv, sx, sy, 1, 1, x - 1, y - 1, 1, 1);             // corners
+      ctx.drawImage(u.cv, sx + w - 1, sy, 1, 1, x + w, y - 1, 1, 1);
+      ctx.drawImage(u.cv, sx, sy + h - 1, 1, 1, x - 1, y + h, 1, 1);
+      ctx.drawImage(u.cv, sx + w - 1, sy + h - 1, 1, 1, x + w, y + h, 1, 1);
+    }
+  }
+  return cv;
+}
+
+function atDraw() {
+  const A = atState();
+  const view = $("#atCanvas");
+  const empty = $("#atEmpty");
+  if (!view) return;
+  const ctx = view.getContext("2d");
+  if (!A.items.length) {
+    view.width = 480; view.height = 360;
+    ctx.clearRect(0, 0, view.width, view.height);
+    if (empty) empty.hidden = false;
+    atStatus("");
+    return;
+  }
+  if (empty) empty.hidden = true;
+  if (!A.packed) {
+    const first = A.items[0];
+    view.width = first.cv.width; view.height = first.cv.height;
+    ctx.drawImage(first.cv, 0, 0);
+    atStatus(A.items.length + " sprite" + (A.items.length === 1 ? "" : "s") + " loaded — hit Pack.");
+    return;
+  }
+  const P = A.packed;
+  view.width = P.w; view.height = P.h;
+  ctx.drawImage(P.canvas, 0, 0);
+  if (A.labels) {
+    /* preview-only overlay — the exported PNG stays clean */
+    ctx.font = "10px sans-serif";
+    for (const fr of P.frames) {
+      ctx.strokeStyle = "rgba(255,255,255,.65)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(fr.x + .5, fr.y + .5, Math.max(0, fr.w - 1), Math.max(0, fr.h - 1));
+      if (fr.w >= 28 && fr.h >= 14) {
+        const label = fr.u.names[0];
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = "rgba(0,0,0,.55)";
+        ctx.fillRect(fr.x + 1, fr.y + 1, tw + 6, 13);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(label, fr.x + 4, fr.y + 11);
+      }
+    }
+  }
+  const pct = Math.round(P.used / (P.w * P.h) * 100);
+  atStatus(A.items.length + " sprites · " + P.frames.length + " unique · atlas " +
+    P.w + " × " + P.h + " · " + pct + "% filled" +
+    (P.skipped ? " · " + P.skipped + " fully transparent, skipped" : ""));
+}
+
+/* ---- image intake ---- */
+
+function atAddImage(img, name) {
+  const A = atState();
+  const cv = document.createElement("canvas");
+  cv.width = img.width; cv.height = img.height;
+  const cx = cv.getContext("2d", { willReadFrequently: true });
+  cx.drawImage(img, 0, 0);
+  const data = cx.getImageData(0, 0, cv.width, cv.height).data;
+  A.items.push({ name: name || "image", cv, data });
+  if (img.close) img.close();
+  A.packed = null;
+  atDraw();
+}
+
+async function atLoadFiles(files) {
+  const list = [...(files || [])].filter(f => !f.type || f.type.indexOf("image/") === 0);
+  if (!list.length) return;
+  let added = 0;
+  for (const f of list) {
+    try {
+      const bmp = await createImageBitmap(f);
+      atAddImage(bmp, (f.name || "image").replace(/\.[a-z0-9]+$/i, ""));
+      added++;
+    } catch (err) { /* one unreadable file — skip it, keep the rest */ }
+  }
+  if (added) atStatus(atState().items.length + " sprites loaded — hit Pack.");
+  else atStatus("couldn't read those files — try PNG or JPG images.");
+}
+
+/* ---- the Pack action: trim, dedupe, pack, paint ---- */
+
+function atPack() {
+  const A = atState();
+  if (!A.items.length) { atStatus("Add some images first."); return; }
+  const byHash = new Map();
+  const uniques = [];
+  let skipped = 0;
+  for (const it of A.items) {
+    const hash = atPixelHash(it.data, it.cv.width, it.cv.height);
+    const u0 = byHash.get(hash);
+    if (u0) { u0.names.push(it.name); continue; }
+    const trim = atTrimBox(it.data, it.cv.width, it.cv.height);
+    if (!trim) { skipped++; continue; }
+    const u = { cv: it.cv, trim, tw: trim.w, th: trim.h, names: [it.name] };
+    byHash.set(hash, u);
+    uniques.push(u);
+  }
+  if (!uniques.length) { atStatus("every image was fully transparent — nothing to pack."); return; }
+  const res = atPackUnique(uniques, A.pad, A.pot);
+  if (!res) { atStatus("packing failed — try fewer or smaller sprites."); return; }
+  const frames = res.placed.map(p => ({
+    u: p.ref, x: p.x + A.pad, y: p.y + A.pad, w: p.ref.tw, h: p.ref.th,
+  }));
+  const used = uniques.reduce((s, u) => s + u.tw * u.th, 0);
+  A.packed = { canvas: null, frames, w: res.w, h: res.h, used, skipped };
+  A.packed.canvas = atRenderSheet(A);
+  atDraw();
+}
+
+/* ---- manifests (pure string builders) ---- */
+
+/* one entry per sprite NAME — duplicates share their packed rect,
+ * and a name that arrives twice gets a " 2", " 3"… suffix so no
+ * manifest entry can silently overwrite another. */
+function atFrameList(A) {
+  const out = [];
+  const seen = new Map();
+  for (const fr of A.packed.frames) {
+    for (const name of fr.u.names) {
+      const n = (seen.get(name) || 0) + 1;
+      seen.set(name, n);
+      out.push({ name: n === 1 ? name : name + " " + n, fr });
+    }
+  }
+  return out;
+}
+
+/* TexturePacker JSON (hash format): frame rect + the trim record
+ * (spriteSourceSize / sourceSize) engines use to restore the
+ * original sprite. Frame keys carry the .png extension, TexturePacker
+ * style. */
+function atBuildJSON(A) {
+  const frames = {};
+  for (const e of atFrameList(A)) {
+    const fr = e.fr, u = fr.u;
+    frames[e.name + ".png"] = {
+      frame: { x: fr.x, y: fr.y, w: fr.w, h: fr.h },
+      rotated: false,
+      trimmed: u.trim.x !== 0 || u.trim.y !== 0 || u.tw !== u.cv.width || u.th !== u.cv.height,
+      spriteSourceSize: { x: u.trim.x, y: u.trim.y, w: u.tw, h: u.th },
+      sourceSize: { w: u.cv.width, h: u.cv.height },
+      pivot: { x: 0.5, y: 0.5 },
+    };
+  }
+  return {
+    frames,
+    meta: {
+      app: "m4ster FrameLab — Atlas Packer",
+      version: "1.0",
+      image: AT_PNG_NAME,
+      format: "RGBA8888",
+      size: { w: A.packed.w, h: A.packed.h },
+      scale: "1",
+    },
+  };
+}
+
+/* .tpsheet (TexturePacker 40300) for the Unity and Godot importers.
+ * Sprite line: name;x;y;w;h;pivotX;pivotY;0;0;0;0 — the pivot is a
+ * normalised offset from the frame centre (±2 scale), computed so
+ * the ORIGINAL untrimmed sprite's centre stays the pivot: trimming
+ * shifts the pivot instead of losing it. */
+function atTpsheet(A, godot) {
+  const P = A.packed;
+  const lines = [
+    "#",
+    "# Sprite sheet data for " + (godot ? "Godot" : "Unity") + " — packed by m4ster FrameLab (Atlas Packer).",
+    "#",
+    ":format=40300",
+    ":texture=" + AT_PNG_NAME,
+    ":size=" + P.w + "x" + P.h,
+    ":pivotpoints=enabled",
+    ":borders=disabled",
+    "",
+  ];
+  for (const e of atFrameList(A)) {
+    const fr = e.fr, u = fr.u;
+    const px = ((u.cv.width / 2 - u.trim.x) - fr.w / 2) / fr.w * 2;
+    const py = (((u.trim.y + fr.h) - u.cv.height / 2) - fr.h / 2) / fr.h * 2;
+    lines.push([e.name, fr.x, fr.y, fr.w, fr.h,
+      px.toFixed(6), py.toFixed(6), 0, 0, 0, 0].join(";"));
+  }
+  return lines.join("\n") + "\n";
+}
+
+function atExportPNG() {
+  const A = atState();
+  if (!A.packed) { atStatus("Pack something first."); return; }
+  downloadCanvas(A.packed.canvas, AT_PNG_NAME);
+}
+
+function atExportManifest() {
+  const A = atState();
+  if (!A.packed) { atStatus("Pack something first."); return; }
+  if (A.format === "json") downloadJSON(atBuildJSON(A), "m4ster-atlas.json");
+  else downloadBytes(new TextEncoder().encode(atTpsheet(A, A.format === "godot")), "m4ster-atlas.tpsheet", "text/plain");
+}
+
+/* ---------------- Atlas Packer wiring ---------------- */
+
+let atStaticWired = false;
+
+function atWireStage() {
+  // drag & drop onto the stage box — many files at once
+  const box = $("#atStageBox");
+  if (box) {
+    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.add("at-over");
+    }));
+    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.remove("at-over");
+    }));
+    box.addEventListener("drop", (e) => {
+      const fs = e.dataTransfer && e.dataTransfer.files;
+      if (fs && fs.length) atLoadFiles(fs);
+    });
+  }
+  // paste images while the Atlas lane is open
+  document.addEventListener("paste", (e) => {
+    if (state.category !== "atlas") return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    const files = [];
+    for (const it of items) {
+      if (it.type && it.type.indexOf("image/") === 0) {
+        const f = it.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) { atLoadFiles(files); e.preventDefault(); }
+  });
+}
+
+function wireAtlas() {
+  const A = atState();
+  $("#atPick").onclick = () => $("#atFile").click();
+  $("#atFile").onchange = (e) => {
+    atLoadFiles(e.target.files);
+    e.target.value = "";
+  };
+  $("#atClear").onclick = () => {
+    A.items = [];
+    A.packed = null;
+    atDraw();
+  };
+  $("#atPack").onclick = atPack;
+  $("#atExportPng").onclick = atExportPNG;
+  $("#atExportManifest").onclick = atExportManifest;
+  const repack = () => { if (A.packed) atPack(); };
+  const pad = $("#atPad");
+  if (pad) pad.oninput = () => {
+    A.pad = +pad.value;
+    const v = $("#atPadVal");
+    if (v) v.textContent = pad.value + "px";
+    repack();
+  };
+  const ex = $("#atExtrude");
+  if (ex) ex.onchange = () => { A.extrude = ex.checked; repack(); };
+  const pot = $("#atPot");
+  if (pot) pot.onchange = () => { A.pot = pot.checked; repack(); };
+  const lb = $("#atLabels");
+  if (lb) lb.onchange = () => { A.labels = lb.checked; atDraw(); };
+  const fmt = $("#atFormat");
+  if (fmt) fmt.onchange = () => { A.format = fmt.value; };
+  if (!atStaticWired) {
+    atStaticWired = true;
+    atWireStage();
+  }
+  if (A.items.length) atDraw();
+  syncAtlasMode();
+}
+
+/* ================= v8.7: Normal Map Lab — flat sprite → lit sprite =================
+ * Drop in a flat sprite or texture and get back the maps a 2D engine
+ * needs for dynamic lighting: a tangent-space normal map, an ambient
+ * occlusion map and a specular map, all derived from one height field.
+ * The height comes from the image brightness, or from its alpha
+ * channel in silhouette mode (a cutout sprite gets a bevelled edge).
+ * Sampling wraps around the edges, so tileable textures stay seamless.
+ * Pure JS — no models, no server, no login. */
+
+const NM_CAP = 1024;  // working cap on the long edge, same as Cutout Lab
+
+function nmState() {
+  if (!state.normalmap) {
+    state.normalmap = {
+      src: null,        // { data, w, h } working pixels (<= NM_CAP)
+      imgW: 0, imgH: 0, // original dimensions, for the readout
+      name: "image",
+      view: "normal",   // normal | lit | ao | spec — what the stage shows
+      strength: 100,    // normal strength, percent (100 -> slope x2)
+      smooth: 1,        // height-field blur radius, px
+      alphaMode: false, // height from alpha (silhouette) instead of brightness
+      wrap: true,       // wrap-aware sampling (seamless tiles)
+      flipY: false,     // false = OpenGL (Y+), true = DirectX (Y-)
+      maps: null,       // { normal, ao, spec } canvases + raw buffers
+      light: { x: 90, y: 80 },  // lit-preview light spot, canvas coords
+    };
+  }
+  return state.normalmap;
+}
+
+function syncNormalmapMode() {
+  const on = state.category === "normalmap";
+  const aside = document.querySelector("aside.controls");
+  const stage = document.querySelector("section.stage-panel");
+  if (aside) aside.classList.toggle("mode-normalmap", on);
+  if (stage) stage.classList.toggle("mode-normalmap", on);
+  document.body.classList.toggle("mode-normalmap", on);
+  const sec = $("#normalmap");
+  if (sec) sec.hidden = !on;
+  syncToolChrome();
+}
+
+function nmStatus(msg) {
+  const ro = $("#nmReadout");
+  if (ro) ro.textContent = msg;
+}
+
+/* ---- pure math: height field, blur, and the three maps ---- */
+
+/* sample the height field at (x, y). With wrap on, coordinates wrap
+ * around the edges (the left edge reads the right side) — that is
+ * what keeps a tileable texture seamless. Without it, edges clamp. */
+function nmSampleH(hf, w, h, x, y, wrap) {
+  if (wrap) {
+    x = ((x % w) + w) % w;
+    y = ((y % h) + h) % h;
+  } else {
+    x = Math.max(0, Math.min(w - 1, x));
+    y = Math.max(0, Math.min(h - 1, y));
+  }
+  return hf[y * w + x];
+}
+
+/* the height field: one 0..1 height per pixel, from brightness —
+ * or from the alpha channel in silhouette mode, where a sprite's
+ * shape itself becomes the relief. */
+function nmHeightField(data, w, h, alphaMode) {
+  const out = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const a = i * 4;
+    out[i] = alphaMode
+      ? data[a + 3] / 255
+      : (0.2126 * data[a] + 0.7152 * data[a + 1] + 0.0722 * data[a + 2]) / 255;
+  }
+  return out;
+}
+
+/* one box-blur pass over the height field (rows or columns) using
+ * prefix sums, so the cost stays flat whatever the radius. Sampling
+ * follows the same wrap/clamp rule as everything else. */
+function nmBlurPass(src, w, h, radius, wrap, horizontal) {
+  const n = horizontal ? w : h;      // length of one line
+  const lines = horizontal ? h : w;  // how many lines
+  const win = 2 * radius + 1;
+  const ext = new Float64Array(n + 2 * radius + 1);  // prefix sums, line extended by radius each side
+  const out = new Float32Array(src.length);
+  for (let line = 0; line < lines; line++) {
+    ext[0] = 0;
+    for (let t = 0; t < n + 2 * radius; t++) {
+      let idx = t - radius;
+      if (wrap) idx = ((idx % n) + n) % n;
+      else idx = Math.max(0, Math.min(n - 1, idx));
+      ext[t + 1] = ext[t] + (horizontal ? src[line * w + idx] : src[idx * w + line]);
+    }
+    for (let i = 0; i < n; i++) {
+      const v = (ext[i + win] - ext[i]) / win;
+      if (horizontal) out[line * w + i] = v; else out[i * w + line] = v;
+    }
+  }
+  return out;
+}
+
+/* blur the height field by radius px (0 = untouched): a horizontal
+ * pass then a vertical one. Two passes of the wide AO blur below are
+ * what make its falloff soft instead of boxy. */
+function nmBlurHeight(hf, w, h, radius, wrap) {
+  if (radius <= 0 || hf.length === 0) return hf;
+  return nmBlurPass(nmBlurPass(hf, w, h, radius, wrap, true), w, h, radius, wrap, false);
+}
+
+/* Sobel gradients over the height field -> tangent-space normals.
+ * strength scales the slope (0 = a perfectly flat, neutral map).
+ * flipY flips ONLY the green channel: OpenGL (Y+) vs DirectX (Y-). */
+function nmNormalMap(hf, w, h, strength, wrap, flipY) {
+  const out = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const tl = nmSampleH(hf, w, h, x - 1, y - 1, wrap), tc = nmSampleH(hf, w, h, x, y - 1, wrap), tr = nmSampleH(hf, w, h, x + 1, y - 1, wrap);
+      const ml = nmSampleH(hf, w, h, x - 1, y, wrap), mr = nmSampleH(hf, w, h, x + 1, y, wrap);
+      const bl = nmSampleH(hf, w, h, x - 1, y + 1, wrap), bc = nmSampleH(hf, w, h, x, y + 1, wrap), br = nmSampleH(hf, w, h, x + 1, y + 1, wrap);
+      const gx = (tr + 2 * mr + br) - (tl + 2 * ml + bl);  // height rising to the right
+      const gy = (bl + 2 * bc + br) - (tl + 2 * tc + tr);  // height rising downward (image rows)
+      let nx = -gx * strength;
+      let ny = (flipY ? -gy : gy) * strength;
+      const len = Math.hypot(nx, ny, 1) || 1;
+      nx /= len; ny /= len;
+      const nz = 1 / len;
+      const a = (y * w + x) * 4;
+      out[a] = Math.round((nx * 0.5 + 0.5) * 255);
+      out[a + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+      out[a + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+      out[a + 3] = 255;
+    }
+  }
+  return out;
+}
+
+/* ambient occlusion, kept simple and honest: blur the height field
+ * wide, then darken any pixel that sits BELOW its blurred
+ * neighbourhood — grooves and crevices trap light, raised areas and
+ * flat fields stay fully bright. Greyscale RGBA. */
+function nmAoMap(hf, w, h, wrap) {
+  const r = Math.max(2, Math.round(Math.min(w, h) / 16));
+  const soft = nmBlurHeight(nmBlurHeight(hf, w, h, r, wrap), w, h, r, wrap);
+  const out = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) {
+    const below = Math.max(0, soft[i] - hf[i]);
+    const v = Math.round(255 * Math.max(0, 1 - below * 4));
+    const a = i * 4;
+    out[a] = v; out[a + 1] = v; out[a + 2] = v; out[a + 3] = 255;
+  }
+  return out;
+}
+
+/* specular (smoothness) map: higher ground reads as smoother and
+ * shinier, low ground as rough. Greyscale RGBA. */
+function nmSpecMap(hf, w, h) {
+  const out = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) {
+    const v = Math.round(255 * (0.2 + 0.8 * hf[i]));
+    const a = i * 4;
+    out[a] = v; out[a + 1] = v; out[a + 2] = v; out[a + 3] = 255;
+  }
+  return out;
+}
+
+/* the lit preview: shade the source image with its normal map under
+ * one light at (lx, ly) — diffuse falloff plus a specular glint
+ * weighted by the specular map. ySign bridges the green-channel
+ * convention: OpenGL normals store "up" as +green while image rows
+ * run downward. Pure per-pixel math. */
+function nmShadeLit(src, nrm, spec, w, h, lx, ly, ySign) {
+  const out = new Uint8ClampedArray(src.length);
+  const lz = Math.max(w, h) * 0.75;  // light height above the picture
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = (y * w + x) * 4;
+      let dx = lx - x, dy = (ly - y) * ySign, dz = lz;
+      const dl = Math.hypot(dx, dy, dz) || 1;
+      dx /= dl; dy /= dl; dz /= dl;
+      const nx = nrm[a] / 255 * 2 - 1, ny = nrm[a + 1] / 255 * 2 - 1, nz = nrm[a + 2] / 255 * 2 - 1;
+      const diff = Math.max(0, nx * dx + ny * dy + nz * dz);
+      let hx = dx, hy = dy, hz = dz + 1;  // half-vector: view is straight down +z
+      const hl = Math.hypot(hx, hy, hz) || 1;
+      hx /= hl; hy /= hl; hz /= hl;
+      const ndh = Math.max(0, nx * hx + ny * hy + nz * hz);
+      const sp = Math.pow(ndh, 24) * (spec[a] / 255) * 0.7;
+      const shade = 0.3 + 0.7 * diff;
+      out[a] = Math.min(255, src[a] * shade + sp * 255);
+      out[a + 1] = Math.min(255, src[a + 1] * shade + sp * 255);
+      out[a + 2] = Math.min(255, src[a + 2] * shade + sp * 255);
+      out[a + 3] = src[a + 3];
+    }
+  }
+  return out;
+}
+
+/* ---- DOM side: canvases, loading, drawing, export ---- */
+
+function nmCanvasFrom(buf, w, h) {
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  cv.getContext("2d").putImageData(new ImageData(buf, w, h), 0, 0);
+  return cv;
+}
+
+/* rebuild all three maps from the current settings, then redraw.
+ * The normal map keeps the sprite's own alpha, so a cutout sprite's
+ * normal map keeps its shape in the engine. */
+function nmRecompute() {
+  const N = nmState();
+  if (!N.src) return;
+  const { data, w, h } = N.src;
+  let hf = nmHeightField(data, w, h, N.alphaMode);
+  hf = nmBlurHeight(hf, w, h, N.smooth, N.wrap);
+  const nrm = nmNormalMap(hf, w, h, N.strength / 50, N.wrap, N.flipY);
+  for (let i = 0; i < w * h; i++) nrm[i * 4 + 3] = data[i * 4 + 3];
+  const spec = nmSpecMap(hf, w, h);
+  N.maps = {
+    normal: nmCanvasFrom(nrm, w, h),
+    ao: nmCanvasFrom(nmAoMap(hf, w, h, N.wrap), w, h),
+    spec: nmCanvasFrom(spec, w, h),
+    nrmData: nrm, specData: spec,
+  };
+  nmDraw();
+}
+
+function nmDraw() {
+  const N = nmState();
+  const view = $("#nmCanvas");
+  if (!view || !N.src || !N.maps) return;
+  const { w, h } = N.src;
+  if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
+  const ctx = view.getContext("2d");
+  if (N.view === "lit") {
+    const lit = nmShadeLit(N.src.data, N.maps.nrmData, N.maps.specData, w, h,
+      N.light.x, N.light.y, N.flipY ? 1 : -1);
+    ctx.putImageData(new ImageData(lit, w, h), 0, 0);
+  } else {
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(N.maps[N.view], 0, 0);
+  }
+  const names = { normal: "normal map", lit: "lit preview", ao: "AO map", spec: "specular map" };
+  nmStatus(N.name + " · " + w + " × " + h + " · " + names[N.view] +
+    (N.view === "normal" ? (N.flipY ? " · DirectX (Y−)" : " · OpenGL (Y+)") : ""));
+}
+
+/* the sample: a greyscale medallion with clear relief — a shaded rim,
+ * a beaded edge, a domed disc and an embossed star — drawn on
+ * transparency, so both height modes have something to bite on. */
+function nmMakeSample() {
+  const s = 256, cv = document.createElement("canvas");
+  cv.width = s; cv.height = s;
+  const c = cv.getContext("2d");
+  const cx = s / 2, cy = s / 2;
+  const rim = c.createRadialGradient(cx - 30, cy - 30, 20, cx, cy, 118);
+  rim.addColorStop(0, "#f4f4f4"); rim.addColorStop(0.55, "#9a9a9a");
+  rim.addColorStop(0.85, "#4a4a4a"); rim.addColorStop(1, "#2e2e2e");
+  c.fillStyle = rim;
+  c.beginPath(); c.arc(cx, cy, 116, 0, Math.PI * 2); c.fill();
+  c.fillStyle = "#cfcfcf";
+  for (let i = 0; i < 24; i++) {
+    const a = i / 24 * Math.PI * 2;
+    c.beginPath(); c.arc(cx + Math.cos(a) * 100, cy + Math.sin(a) * 100, 7, 0, Math.PI * 2); c.fill();
+  }
+  const disc = c.createRadialGradient(cx - 24, cy - 24, 8, cx, cy, 88);
+  disc.addColorStop(0, "#e8e8e8"); disc.addColorStop(1, "#6a6a6a");
+  c.fillStyle = disc;
+  c.beginPath(); c.arc(cx, cy, 86, 0, Math.PI * 2); c.fill();
+  c.fillStyle = "#f8f8f8";
+  c.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 5;
+    const r = i % 2 === 0 ? 52 : 22;
+    const px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r;
+    if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+  }
+  c.closePath(); c.fill();
+  return cv;
+}
+
+/* bring an image in (file, paste, drop or the sample) and make it
+ * the working image, capped at NM_CAP on the long edge so slider
+ * changes stay live. */
+function nmLoadSource(img, name) {
+  const N = nmState();
+  const scale = Math.min(1, NM_CAP / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const cx2 = cv.getContext("2d", { willReadFrequently: true });
+  cx2.drawImage(img, 0, 0, w, h);
+  const id = cx2.getImageData(0, 0, w, h);
+  N.src = { data: id.data, w, h };
+  N.imgW = img.width; N.imgH = img.height;
+  N.name = name || "image";
+  N.light = { x: Math.round(w * 0.35), y: Math.round(h * 0.3) };
+  if (img.close) img.close();
+  const view = $("#nmCanvas");
+  if (view) { view.width = w; view.height = h; }
+  const empty = $("#nmEmpty");
+  if (empty) empty.hidden = true;
+  nmRecompute();
+}
+
+async function nmLoadFile(file) {
+  if (!file) return;
+  try {
+    const bmp = await createImageBitmap(file);
+    nmLoadSource(bmp, file.name || "image");
+  } catch (err) {
+    nmStatus("couldn't read that image — try a PNG or JPG.");
+  }
+}
+
+function nmExportPNG() {
+  const N = nmState();
+  if (!N.src || !N.maps) { nmStatus("Load an image or the sample first."); return; }
+  const { w, h } = N.src;
+  if (N.view === "lit") {
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const lit = nmShadeLit(N.src.data, N.maps.nrmData, N.maps.specData, w, h,
+      N.light.x, N.light.y, N.flipY ? 1 : -1);
+    cv.getContext("2d").putImageData(new ImageData(lit, w, h), 0, 0);
+    downloadCanvas(cv, "m4ster-normalmap-lit-" + w + "x" + h + ".png");
+    return;
+  }
+  downloadCanvas(N.maps[N.view], "m4ster-normalmap-" + N.view + "-" + w + "x" + h + ".png");
+}
+
+/* ---------------- Normal Map Lab wiring ---------------- */
+
+let nmStaticWired = false;
+let nmLitQueued = false;
+
+function nmWireStage() {
+  const box = $("#nmStageBox");
+  if (box) {
+    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.add("nm-over");
+    }));
+    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.remove("nm-over");
+    }));
+    box.addEventListener("drop", (e) => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) nmLoadFile(f);
+    });
+  }
+  // paste an image while the Normal Map lane is open
+  document.addEventListener("paste", (e) => {
+    if (state.category !== "normalmap") return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.type && it.type.indexOf("image/") === 0) {
+        const f = it.getAsFile();
+        if (f) { nmLoadFile(f); e.preventDefault(); break; }
+      }
+    }
+  });
+  // in Lit view the light follows the pointer over the picture
+  const cv = $("#nmCanvas");
+  if (cv) cv.addEventListener("pointermove", (e) => {
+    const N = nmState();
+    if (!N.src || N.view !== "lit") return;
+    const r = cv.getBoundingClientRect();
+    N.light = {
+      x: (e.clientX - r.left) * cv.width / r.width,
+      y: (e.clientY - r.top) * cv.height / r.height,
+    };
+    if (!nmLitQueued) {
+      nmLitQueued = true;
+      requestAnimationFrame(() => {
+        nmLitQueued = false;
+        if (nmState().view === "lit") nmDraw();
+      });
+    }
+  });
+}
+
+function wireNormalmap() {
+  const N = nmState();
+  $("#nmSample").onclick = () => nmLoadSource(nmMakeSample(), "sample medallion");
+  $("#nmPick").onclick = () => $("#nmFile").click();
+  $("#nmFile").onchange = (e) => {
+    nmLoadFile(e.target.files[0]);
+    e.target.value = "";
+  };
+  document.querySelectorAll("#nmViewSeg .seg-btn").forEach(b => {
+    b.onclick = () => {
+      N.view = b.dataset.nmview;
+      document.querySelectorAll("#nmViewSeg .seg-btn").forEach(x => x.classList.toggle("active", x === b));
+      nmDraw();
+    };
+  });
+  document.querySelectorAll("#nmHeightSeg .seg-btn").forEach(b => {
+    b.onclick = () => {
+      N.alphaMode = b.dataset.nmheight === "alpha";
+      document.querySelectorAll("#nmHeightSeg .seg-btn").forEach(x => x.classList.toggle("active", x === b));
+      nmRecompute();
+    };
+  });
+  document.querySelectorAll("#nmFlipSeg .seg-btn").forEach(b => {
+    b.onclick = () => {
+      N.flipY = b.dataset.nmflip === "dx";
+      document.querySelectorAll("#nmFlipSeg .seg-btn").forEach(x => x.classList.toggle("active", x === b));
+      nmRecompute();
+    };
+  });
+  const st = $("#nmStrength");
+  if (st) st.oninput = () => {
+    N.strength = +st.value;
+    const v = $("#nmStrengthVal");
+    if (v) v.textContent = st.value + "%";
+    nmRecompute();
+  };
+  const sm = $("#nmSmooth");
+  if (sm) sm.oninput = () => {
+    N.smooth = +sm.value;
+    const v = $("#nmSmoothVal");
+    if (v) v.textContent = sm.value + "px";
+    nmRecompute();
+  };
+  const wr = $("#nmWrap");
+  if (wr) wr.onchange = () => { N.wrap = wr.checked; nmRecompute(); };
+  $("#nmExport").onclick = nmExportPNG;
+  if (!nmStaticWired) {
+    nmStaticWired = true;
+    nmWireStage();
+  }
+  if (N.src) nmDraw();
+  syncNormalmapMode();
+}
+
+/* ================= v8.8: Seamless Tiler — texture in, repeat out =================
+ * Make any texture tileable and prove it live. The Offset view rolls
+ * the texture by half on both axes, so the wrap edges land in the
+ * middle where the seams are easy to see. The heal cross-fades the
+ * edge bands: inside a band, every pixel blends toward the pixel
+ * mirrored from the opposite edge, and the blend peaks at exactly
+ * one half on the outermost line — so the first and last columns
+ * land on the very same value and the wrap step disappears. The 3x3
+ * view repeats the healed texture so any leftover seam shows at
+ * once. Pure JS — no models, no server, no login. */
+
+const TL_CAP = 1024;  // working cap on the long edge, same as Normal Map Lab
+
+function tlState() {
+  if (!state.tiler) {
+    state.tiler = {
+      src: null,        // { data, w, h } pristine working pixels (<= TL_CAP)
+      full: null,       // { data, w, h } pristine pixels at original size, for export
+      imgW: 0, imgH: 0, // original dimensions, for the readout
+      name: "texture",
+      view: "single",   // single | offset | grid — what the stage shows
+      strength: 60,     // heal strength, percent of the widest band
+      healed: null,     // healed RGBA buffer at working size
+      healedCv: null,   // the same, as a canvas, for the 3x3 draw
+    };
+  }
+  return state.tiler;
+}
+
+function syncTilerMode() {
+  const on = state.category === "tiler";
+  const aside = document.querySelector("aside.controls");
+  const stage = document.querySelector("section.stage-panel");
+  if (aside) aside.classList.toggle("mode-tiler", on);
+  if (stage) stage.classList.toggle("mode-tiler", on);
+  document.body.classList.toggle("mode-tiler", on);
+  const sec = $("#tiler");
+  if (sec) sec.hidden = !on;
+  syncToolChrome();
+}
+
+function tlStatus(msg) {
+  const ro = $("#tlReadout");
+  if (ro) ro.textContent = msg;
+}
+
+/* ---- pure math: the heal and the offset roll ---- */
+
+/* how wide the cross-fade band is along one axis: the strength
+ * slider spends itself on up to a quarter of that dimension, so
+ * 100% heals the outer 25% on every side and 0% heals nothing. */
+function tlBand(len, strength) {
+  return Math.round(len * 0.25 * strength / 100);
+}
+
+/* one axis of the heal, in place: inside the two edge bands, blend
+ * each pixel toward the pixel mirrored from the opposite edge —
+ * pixel i trades with pixel len-1-i, so both edges move toward each
+ * other and meet exactly halfway on the outermost line (t = 0.5
+ * there), which is what makes the wrap continuous. Pairs are written
+ * together so neither side reads a half-blended partner. */
+function tlHealAxis(buf, w, h, band, horizontal) {
+  const len = horizontal ? w : h;    // length of one line
+  const lines = horizontal ? h : w;  // how many lines
+  for (let line = 0; line < lines; line++) {
+    for (let i = 0; i < band && i < len / 2; i++) {
+      const t = 0.5 * (1 - i / band);  // 0.5 at the edge, fading inward
+      const j = len - 1 - i;           // the mirrored pixel, opposite edge
+      const a = (horizontal ? line * w + i : i * w + line) * 4;
+      const b = (horizontal ? line * w + j : j * w + line) * 4;
+      for (let ch = 0; ch < 4; ch++) {
+        const va = buf[a + ch], vb = buf[b + ch];
+        buf[a + ch] = va * (1 - t) + vb * t;
+        buf[b + ch] = vb * (1 - t) + va * t;
+      }
+    }
+  }
+}
+
+/* heal a texture: a horizontal pass, then a vertical one on the
+ * result. The vertical pass blends whole columns toward each other,
+ * and because the horizontal pass already made every row wrap-clean,
+ * equal columns stay equal — the second pass cannot reopen the
+ * first seam. Always computed from the pristine source, so dragging
+ * the slider back and forth never compounds the blend. */
+function tlHeal(data, w, h, strength) {
+  const out = new Uint8ClampedArray(data);
+  const bw = tlBand(w, strength), bh = tlBand(h, strength);
+  if (bw > 0) tlHealAxis(out, w, h, bw, true);
+  if (bh > 0) tlHealAxis(out, w, h, bh, false);
+  return out;
+}
+
+/* the offset view: roll the texture by half on both axes. The wrap
+ * edges land in the middle, where a seam cannot hide. */
+function tlOffset(data, w, h) {
+  const out = new Uint8ClampedArray(data.length);
+  const hw = Math.floor(w / 2), hh = Math.floor(h / 2);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = (y * w + x) * 4;
+      const b = (((y + hh) % h) * w + ((x + hw) % w)) * 4;
+      out[a] = data[b]; out[a + 1] = data[b + 1];
+      out[a + 2] = data[b + 2]; out[a + 3] = data[b + 3];
+    }
+  }
+  return out;
+}
+
+/* ---- DOM side: canvases, loading, drawing, export ---- */
+
+function tlCanvasFrom(buf, w, h) {
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  cv.getContext("2d").putImageData(new ImageData(buf, w, h), 0, 0);
+  return cv;
+}
+
+/* recompute the heal from the pristine source at the current
+ * strength, then redraw — the slider stays live because the source
+ * is never the healed output. */
+function tlRecompute() {
+  const T = tlState();
+  if (!T.src) return;
+  const { data, w, h } = T.src;
+  T.healed = tlHeal(data, w, h, T.strength);
+  T.healedCv = tlCanvasFrom(T.healed, w, h);
+  tlDraw();
+}
+
+function tlDraw() {
+  const T = tlState();
+  const view = $("#tlCanvas");
+  if (!view || !T.src || !T.healed) return;
+  const { w, h } = T.src;
+  if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
+  const ctx = view.getContext("2d");
+  if (T.view === "offset") {
+    ctx.putImageData(new ImageData(tlOffset(T.healed, w, h), w, h), 0, 0);
+  } else if (T.view === "grid") {
+    const tw = w / 3, th = h / 3;
+    for (let gy = 0; gy < 3; gy++) {
+      for (let gx = 0; gx < 3; gx++) ctx.drawImage(T.healedCv, gx * tw, gy * th, tw, th);
+    }
+  } else {
+    ctx.drawImage(T.healedCv, 0, 0);
+  }
+  const names = { single: "healed texture", offset: "offset view — seams in the middle", grid: "3 × 3 repeat" };
+  tlStatus(T.name + " · " + T.imgW + " × " + T.imgH + " · heal " + T.strength + "% · " + names[T.view]);
+}
+
+/* the sample: a stone-ish texture that deliberately does NOT tile —
+ * warm sand on the left runs into cool slate on the right, the top
+ * sits in shadow and the bottom in light, and soft blotches are
+ * clipped by the edges, so every seam is obvious before the heal. */
+function tlMakeSample() {
+  const s = 256, cv = document.createElement("canvas");
+  cv.width = s; cv.height = s;
+  const c = cv.getContext("2d");
+  const across = c.createLinearGradient(0, 0, s, 0);
+  across.addColorStop(0, "#977950"); across.addColorStop(0.5, "#7d7461"); across.addColorStop(1, "#4e6472");
+  c.fillStyle = across;
+  c.fillRect(0, 0, s, s);
+  const down = c.createLinearGradient(0, 0, 0, s);
+  down.addColorStop(0, "rgba(30,26,20,0.45)"); down.addColorStop(0.5, "rgba(0,0,0,0)"); down.addColorStop(1, "rgba(240,235,220,0.35)");
+  c.fillStyle = down;
+  c.fillRect(0, 0, s, s);
+  const tones = ["#8a6f4d", "#5d7263", "#a08b62", "#54626e", "#77644a", "#687d6d"];
+  for (let i = 0; i < 46; i++) {
+    const x = Math.random() * s, y = Math.random() * s, r = 12 + Math.random() * 42;
+    const rg = c.createRadialGradient(x, y, 1, x, y, r);
+    const col = tones[i % tones.length];
+    rg.addColorStop(0, col + "cc"); rg.addColorStop(1, col + "00");
+    c.fillStyle = rg;
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+  }
+  for (let i = 0; i < 900; i++) {
+    c.fillStyle = Math.random() < 0.5 ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.14)";
+    c.fillRect(Math.random() * s, Math.random() * s, 2, 2);
+  }
+  return cv;
+}
+
+/* bring a texture in (file, paste, drop or the sample). The
+ * original pixels are kept whole for the export; the working copy
+ * is capped at TL_CAP so the heal slider stays live. The heal only
+ * ever reads the pristine pixels, never its own output. */
+function tlLoadSource(img, name) {
+  const T = tlState();
+  const fc = document.createElement("canvas");
+  fc.width = img.width; fc.height = img.height;
+  const fx = fc.getContext("2d", { willReadFrequently: true });
+  fx.drawImage(img, 0, 0);
+  const fid = fx.getImageData(0, 0, fc.width, fc.height);
+  T.full = { data: fid.data, w: fc.width, h: fc.height };
+  T.imgW = img.width; T.imgH = img.height;
+  const scale = Math.min(1, TL_CAP / Math.max(img.width, img.height));
+  if (scale < 1) {
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const cx2 = cv.getContext("2d", { willReadFrequently: true });
+    cx2.drawImage(img, 0, 0, w, h);
+    const id = cx2.getImageData(0, 0, w, h);
+    T.src = { data: id.data, w, h };
+  } else {
+    T.src = T.full;
+  }
+  T.name = name || "texture";
+  if (img.close) img.close();
+  const view = $("#tlCanvas");
+  if (view) { view.width = T.src.w; view.height = T.src.h; }
+  const empty = $("#tlEmpty");
+  if (empty) empty.hidden = true;
+  tlRecompute();
+}
+
+async function tlLoadFile(file) {
+  if (!file) return;
+  try {
+    const bmp = await createImageBitmap(file);
+    tlLoadSource(bmp, file.name || "texture");
+  } catch (err) {
+    tlStatus("couldn't read that image — try a PNG or JPG.");
+  }
+}
+
+/* export the healed texture at the original resolution: the same
+ * heal, run once over the full-size pristine pixels. */
+function tlExportPNG() {
+  const T = tlState();
+  if (!T.full) { tlStatus("Load a texture or the sample first."); return; }
+  const { data, w, h } = T.full;
+  const cv = tlCanvasFrom(tlHeal(data, w, h, T.strength), w, h);
+  downloadCanvas(cv, "m4ster-seamless-" + w + "x" + h + ".png");
+}
+
+/* ---------------- Seamless Tiler wiring ---------------- */
+
+let tlStaticWired = false;
+
+function tlWireStage() {
+  const box = $("#tlStageBox");
+  if (box) {
+    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.add("tl-over");
+    }));
+    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.remove("tl-over");
+    }));
+    box.addEventListener("drop", (e) => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) tlLoadFile(f);
+    });
+  }
+  // paste an image while the Tiler lane is open
+  document.addEventListener("paste", (e) => {
+    if (state.category !== "tiler") return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.type && it.type.indexOf("image/") === 0) {
+        const f = it.getAsFile();
+        if (f) { tlLoadFile(f); e.preventDefault(); break; }
+      }
+    }
+  });
+}
+
+function wireTiler() {
+  const T = tlState();
+  $("#tlSample").onclick = () => tlLoadSource(tlMakeSample(), "sample stone");
+  $("#tlPick").onclick = () => $("#tlFile").click();
+  $("#tlFile").onchange = (e) => {
+    tlLoadFile(e.target.files[0]);
+    e.target.value = "";
+  };
+  document.querySelectorAll("#tlViewSeg .seg-btn").forEach(b => {
+    b.onclick = () => {
+      T.view = b.dataset.tlview;
+      document.querySelectorAll("#tlViewSeg .seg-btn").forEach(x => x.classList.toggle("active", x === b));
+      tlDraw();
+    };
+  });
+  const st = $("#tlStrength");
+  if (st) st.oninput = () => {
+    T.strength = +st.value;
+    const v = $("#tlStrengthVal");
+    if (v) v.textContent = st.value + "%";
+    tlRecompute();
+  };
+  $("#tlExport").onclick = tlExportPNG;
+  if (!tlStaticWired) {
+    tlStaticWired = true;
+    tlWireStage();
+  }
+  if (T.src) tlDraw();
+  syncTilerMode();
+}
+
+/* ================= v8.9: Palette Lab — colors out, swaps, variants =================
+ * Pull the palette out of any sprite, swap colors, and spin off
+ * recolor variants (team colors, enemy tiers, skins). Extraction
+ * counts the exact colors first — real sprites use few enough that
+ * they usually get their true palette back untouched — and only
+ * photos fall through to a median-cut quantize capped at 16. A swap
+ * replaces the picked color (a Tolerance slider feathers the
+ * replacement across nearby shades, so anti-aliased edges don't
+ * fringe), and the variant chips rotate the PALETTE's hues and
+ * repaint the sprite through it, so flat colors stay flat. Fully
+ * transparent pixels are ignored by the palette and never modified
+ * by anything. Pure JS — no models, no server, no login. */
+
+const PL_CAP = 1024;      // working cap on the long edge, same as Normal Map Lab
+const PL_MAX_COLORS = 16; // a sprite palette, not a photo histogram
+
+function plState() {
+  if (!state.palette) {
+    state.palette = {
+      src: null,        // { data, w, h } pristine working pixels (<= PL_CAP)
+      imgW: 0, imgH: 0, // original dimensions, for the readout
+      name: "sprite",
+      work: null,       // { data, w, h } current pixels, after swaps/variants
+      colors: [],       // extracted palette: [{ r, g, b, count }] most-used first
+      fromIdx: -1,      // palette index picked as the swap source (-1 = none)
+      toHex: "#3fa7ff", // swap target, from the color input
+      tolerance: 0,     // 0-64 RGB-distance allowance around the picked color
+      undo: [],         // stack of earlier work buffers (newest last)
+    };
+  }
+  return state.palette;
+}
+
+function syncPaletteMode() {
+  const on = state.category === "palette";
+  const aside = document.querySelector("aside.controls");
+  const stage = document.querySelector("section.stage-panel");
+  if (aside) aside.classList.toggle("mode-palette", on);
+  if (stage) stage.classList.toggle("mode-palette", on);
+  document.body.classList.toggle("mode-palette", on);
+  const sec = $("#palette");
+  if (sec) sec.hidden = !on;
+  syncToolChrome();
+}
+
+function plStatus(msg) {
+  const ro = $("#plReadout");
+  if (ro) ro.textContent = msg;
+}
+
+/* ---- color helpers ---- */
+
+function plHex(c) {
+  const h = (n) => n.toString(16).padStart(2, "0");
+  return "#" + h(c.r) + h(c.g) + h(c.b);
+}
+
+function plParseHex(str) {
+  const n = parseInt(String(str).replace("#", ""), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+/* RGB -> HSL with h in degrees [0,360), s and l in [0,1] */
+function plRgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h;
+  if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return { h: h * 60, s, l };
+}
+
+function plHslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360 / 360;
+  if (s === 0) { const v = Math.round(l * 255); return { r: v, g: v, b: v }; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const pick = (t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return {
+    r: Math.round(pick(h + 1 / 3) * 255),
+    g: Math.round(pick(h) * 255),
+    b: Math.round(pick(h - 1 / 3) * 255),
+  };
+}
+
+/* rotate one color's hue by deg degrees; greys and pure black/white
+ * have no hue to spin, so they map to themselves. */
+function plRotateHue(c, deg) {
+  const hsl = plRgbToHsl(c.r, c.g, c.b);
+  if (hsl.s === 0) return { r: c.r, g: c.g, b: c.b };
+  const rgb = plHslToRgb(hsl.h + deg, hsl.s, hsl.l);
+  return { r: rgb.r, g: rgb.g, b: rgb.b };
+}
+
+/* ---- palette extraction ---- */
+
+/* count every visible color exactly. Fully transparent pixels are
+ * skipped — their RGB is meaningless padding in most files. */
+function plCountColors(data) {
+  const map = new Map();
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] === 0) continue;
+    const key = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+    const hit = map.get(key);
+    if (hit) hit.count++;
+    else map.set(key, { r: data[i], g: data[i + 1], b: data[i + 2], count: 1 });
+  }
+  return [...map.values()];
+}
+
+/* the channel span of one median-cut box, and which channel is widest */
+function plBoxRange(box) {
+  let rMin = 255, rMax = 0, gMin = 255, gMax = 0, bMin = 255, bMax = 0;
+  for (const c of box) {
+    if (c.r < rMin) rMin = c.r; if (c.r > rMax) rMax = c.r;
+    if (c.g < gMin) gMin = c.g; if (c.g > gMax) gMax = c.g;
+    if (c.b < bMin) bMin = c.b; if (c.b > bMax) bMax = c.b;
+  }
+  const spans = [rMax - rMin, gMax - gMin, bMax - bMin];
+  let chan = 0;
+  if (spans[1] > spans[chan]) chan = 1;
+  if (spans[2] > spans[chan]) chan = 2;
+  return { range: spans[chan], chan };
+}
+
+/* one box -> one palette color: the count-weighted average, so the
+ * representative sits where the pixels actually are. */
+function plBoxColor(box) {
+  let r = 0, g = 0, b = 0, count = 0;
+  for (const c of box) {
+    r += c.r * c.count; g += c.g * c.count; b += c.b * c.count;
+    count += c.count;
+  }
+  return { r: Math.round(r / count), g: Math.round(g / count), b: Math.round(b / count), count };
+}
+
+/* median-cut quantize: keep splitting the widest box at its pixel
+ * median until the cap is reached. Deterministic — same input,
+ * same palette, every time. */
+function plMedianCut(colors, maxColors) {
+  const CH = ["r", "g", "b"];
+  const boxes = [colors.slice()];
+  while (boxes.length < maxColors) {
+    let pick = -1, pickRange = 0, pickChan = 0;
+    boxes.forEach((box, i) => {
+      if (box.length < 2) return;
+      const { range, chan } = plBoxRange(box);
+      if (range > pickRange) { pickRange = range; pick = i; pickChan = chan; }
+    });
+    if (pick < 0) break;  // nothing left that can split
+    const box = boxes.splice(pick, 1)[0];
+    box.sort((a, b) => a[CH[pickChan]] - b[CH[pickChan]]);
+    let total = 0;
+    for (const c of box) total += c.count;
+    let acc = 0, k = 0;
+    while (k < box.length - 1 && acc < total / 2) { acc += box[k].count; k++; }
+    boxes.push(box.slice(0, k), box.slice(k));
+  }
+  return boxes.map(plBoxColor).sort((a, b) => b.count - a.count);
+}
+
+/* the palette of a pixel buffer, most-used color first. Sprites
+ * with <= maxColors visible colors get them back EXACTLY — counts
+ * and all; only richer images go through median-cut. */
+function plExtractPalette(data, maxColors) {
+  const counted = plCountColors(data);
+  if (counted.length <= maxColors) {
+    return counted.sort((a, b) => b.count - a.count);
+  }
+  return plMedianCut(counted, maxColors);
+}
+
+/* ---- the two recolors ---- */
+
+/* swap `from` for `to`. Tolerance 0 = exact matches only. Above 0,
+ * pixels within tolerance swap fully, and a feather band one
+ * tolerance wide beyond that blends toward `to`, fading with
+ * distance — anti-aliased edges follow the swap instead of
+ * fringing. Alpha is never written; clear pixels are skipped. */
+function plSwapColors(data, from, to, tolerance) {
+  const out = new Uint8ClampedArray(data);
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] === 0) continue;
+    const dr = data[i] - from.r, dg = data[i + 1] - from.g, db = data[i + 2] - from.b;
+    const d = Math.sqrt(dr * dr + dg * dg + db * db);
+    if (tolerance === 0) {
+      if (d === 0) { out[i] = to.r; out[i + 1] = to.g; out[i + 2] = to.b; }
+    } else if (d <= tolerance) {
+      out[i] = to.r; out[i + 1] = to.g; out[i + 2] = to.b;
+    } else if (d < tolerance * 2) {
+      const f = 1 - (d - tolerance) / tolerance;  // 1 at the core rim, 0 at the feather edge
+      out[i]     = data[i]     + (to.r - data[i])     * f;
+      out[i + 1] = data[i + 1] + (to.g - data[i + 1]) * f;
+      out[i + 2] = data[i + 2] + (to.b - data[i + 2]) * f;
+    }
+  }
+  return out;
+}
+
+/* index of the palette color nearest to (r,g,b), plain RGB distance */
+function plNearestIdx(colors, r, g, b) {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < colors.length; i++) {
+    const dr = r - colors[i].r, dg = g - colors[i].g, db = b - colors[i].b;
+    const d = dr * dr + dg * dg + db * db;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+/* spin every palette hue by deg and repaint through the palette:
+ * each pixel keeps its offset from its nearest palette color, so
+ * anti-aliasing shades ride along — but two pixels wearing the
+ * same palette color always land on the same new color, and flat
+ * areas stay exactly flat. Not a whole-image hue filter. */
+function plVariantColors(data, colors, deg) {
+  const out = new Uint8ClampedArray(data);
+  if (!colors.length) return out;
+  const spun = colors.map(c => plRotateHue(c, deg));
+  const cache = new Map();  // packed rgb -> palette index; sprites repeat colors a lot
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] === 0) continue;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const key = (r << 16) | (g << 8) | b;
+    let idx = cache.get(key);
+    if (idx === undefined) { idx = plNearestIdx(colors, r, g, b); cache.set(key, idx); }
+    const base = colors[idx], rot = spun[idx];
+    out[i]     = r + (rot.r - base.r);
+    out[i + 1] = g + (rot.g - base.g);
+    out[i + 2] = b + (rot.b - base.b);
+  }
+  return out;
+}
+
+/* the palette as GIMP .gpl text — one "R G B #hex" line per color */
+function plGplText(colors, name) {
+  const lines = ["GIMP Palette", "Name: FrameLab Palette — " + name, "Columns: 4", "#"];
+  for (const c of colors) lines.push(c.r + " " + c.g + " " + c.b + " " + plHex(c));
+  return lines.join("\n") + "\n";
+}
+
+/* ---- DOM side: canvases, loading, drawing, export ---- */
+
+function plCanvasFrom(buf, w, h) {
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  cv.getContext("2d").putImageData(new ImageData(buf, w, h), 0, 0);
+  return cv;
+}
+
+/* re-extract the palette from the working pixels — after every op
+ * the swatches must describe the sprite as it NOW is. */
+function plExtract() {
+  const P = plState();
+  P.colors = P.work ? plExtractPalette(P.work.data, PL_MAX_COLORS) : [];
+  if (P.fromIdx >= P.colors.length) P.fromIdx = -1;
+}
+
+function plDraw() {
+  const P = plState();
+  const view = $("#plCanvas");
+  if (!view || !P.work) return;
+  const { data, w, h } = P.work;
+  if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
+  view.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(data), w, h), 0, 0);
+  plStatus(P.name + " · " + P.imgW + " × " + P.imgH + " · " + P.colors.length +
+    (P.colors.length === 1 ? " color" : " colors"));
+}
+
+/* repaint the panel's palette bits (swatches, swap source, variant
+ * chips) from state — called after loads, ops and panel re-renders,
+ * because renderParams rebuilds the panel HTML on every lane hop. */
+function plPaintPanel() {
+  const P = plState();
+  const sw = $("#plSwatches");
+  if (sw) {
+    if (!P.colors.length) {
+      sw.innerHTML = `<span class="dim">no sprite loaded yet</span>`;
+    } else {
+      sw.innerHTML = P.colors.map((c, i) =>
+        `<button type="button" class="pl-swatch${i === P.fromIdx ? " active" : ""}" data-pli="${i}" title="swap from ${plHex(c)}"><span class="pl-dot" style="background:${plHex(c)}"></span><span>${plHex(c)}</span><span class="dim">${c.count}</span></button>`
+      ).join("");
+      sw.querySelectorAll(".pl-swatch").forEach(b => {
+        b.onclick = () => {
+          P.fromIdx = +b.dataset.pli;
+          plPaintPanel();
+        };
+      });
+    }
+  }
+  const chip = $("#plFromChip");
+  const hex = $("#plFromHex");
+  const from = P.fromIdx >= 0 ? P.colors[P.fromIdx] : null;
+  if (chip) chip.style.background = from ? plHex(from) : "";
+  if (hex) hex.textContent = from ? plHex(from) : "pick a color above";
+  const undo = $("#plUndo");
+  if (undo) undo.disabled = !P.undo.length;
+  const va = $("#plVariants");
+  if (va) {
+    if (!P.colors.length) {
+      va.innerHTML = `<span class="dim">load a sprite first</span>`;
+    } else {
+      va.innerHTML = [60, 120, 180, 240, 300].map(deg => {
+        const stops = P.colors.slice(0, 4).map(c => plHex(plRotateHue(c, deg))).join(", ");
+        return `<button type="button" class="pl-variant" data-pldeg="${deg}" style="background:linear-gradient(90deg, ${stops})" title="spin the palette hues by ${deg} degrees">+${deg}°</button>`;
+      }).join("");
+      va.querySelectorAll(".pl-variant").forEach(b => {
+        b.onclick = () => plApplyVariant(+b.dataset.pldeg);
+      });
+    }
+  }
+}
+
+/* remember the current pixels so an op can be taken back */
+function plPushUndo() {
+  const P = plState();
+  P.undo.push(new Uint8ClampedArray(P.work.data));
+  if (P.undo.length > 10) P.undo.shift();
+}
+
+function plAfterOp() {
+  plExtract();
+  plDraw();
+  plPaintPanel();
+}
+
+function plApplySwap() {
+  const P = plState();
+  if (!P.work) { plStatus("Load a sprite or the sample first."); return; }
+  const from = P.colors[P.fromIdx];
+  if (!from) { plStatus("Pick a color from the palette first."); return; }
+  plPushUndo();
+  P.work = { data: plSwapColors(P.work.data, from, plParseHex(P.toHex), P.tolerance), w: P.work.w, h: P.work.h };
+  plAfterOp();
+}
+
+function plApplyVariant(deg) {
+  const P = plState();
+  if (!P.work) { plStatus("Load a sprite or the sample first."); return; }
+  plPushUndo();
+  P.work = { data: plVariantColors(P.work.data, P.colors, deg), w: P.work.w, h: P.work.h };
+  plAfterOp();
+}
+
+function plUndoOp() {
+  const P = plState();
+  const prev = P.undo.pop();
+  if (!prev) return;
+  P.work = { data: prev, w: P.work.w, h: P.work.h };
+  plAfterOp();
+}
+
+/* the sample: a little knight drawn pixel by pixel from a char map,
+ * so his palette is exact — a dozen colors including a cheek-shadow
+ * blend tone, plus two half-alpha pixels softening the chin (the "a" cells
+ * wear the skin color at half alpha, like real anti-aliasing). */
+function plMakeSample() {
+  const INK = {
+    H: [185, 197, 208, 255],  // helmet steel
+    D: [119, 130, 142, 255],  // steel shade
+    P: [216, 64, 64, 255],    // plume red
+    S: [242, 193, 132, 255],  // skin
+    C: [217, 168, 105, 255],  // cheek shadow (blend tone)
+    E: [38, 34, 43, 255],     // eyes
+    T: [58, 111, 216, 255],   // tunic blue
+    U: [42, 79, 158, 255],    // tunic shade
+    G: [242, 197, 49, 255],   // gold trim
+    B: [122, 74, 38, 255],    // belt brown
+    K: [55, 48, 43, 255],     // boots
+    W: [230, 237, 244, 255],  // sword blade
+    a: [242, 193, 132, 128],  // AA edge: skin at half alpha
+  };
+  const MAP = [
+    "........................",
+    ".........PPPP...........",
+    "........PPPPPP..........",
+    ".........PPPP...........",
+    ".......HHHHHHHH.........",
+    "......HHHHHHHHHH........",
+    "......HDHHHHHHDH........",
+    "......HHHHHHHHHH........",
+    ".......SSSSSSSS.........",
+    ".......SESSESSS.........",
+    ".......SSSSSSSS.........",
+    "........SCSSS...........",
+    "........SSSS............",
+    ".......aSSSSa......W....",
+    ".....TTTTTTTTTT...WW....",
+    "....TTTTTTTTTTTT.WW.....",
+    "....UTTTGGGGTTTU.W......",
+    "....UTTTGGGGTTTU........",
+    ".....TTBBBBBBTT.........",
+    ".....TTTTTTTTTT.........",
+    "......TTT..TTT..........",
+    "......UUU..UUU..........",
+    ".....KKKK..KKKK.........",
+    "........................",
+  ];
+  const w = 24, h = MAP.length, scale = 6;
+  const small = document.createElement("canvas");
+  small.width = w; small.height = h;
+  const sx = small.getContext("2d");
+  const id = sx.createImageData(w, h);
+  MAP.forEach((row, y) => {
+    const line = (row + ".".repeat(w)).slice(0, w);
+    for (let x = 0; x < w; x++) {
+      const ink = INK[line[x]];
+      if (!ink) continue;
+      const i = (y * w + x) * 4;
+      id.data[i] = ink[0]; id.data[i + 1] = ink[1]; id.data[i + 2] = ink[2]; id.data[i + 3] = ink[3];
+    }
+  });
+  sx.putImageData(id, 0, 0);
+  const cv = document.createElement("canvas");
+  cv.width = w * scale; cv.height = h * scale;
+  const cx = cv.getContext("2d");
+  cx.imageSmoothingEnabled = false;
+  cx.drawImage(small, 0, 0, cv.width, cv.height);
+  return cv;
+}
+
+/* bring a sprite in (file, paste, drop or the sample). Working
+ * pixels are capped at PL_CAP; palette ops are per-pixel, so the
+ * export is the working size — the readout always shows the
+ * original dimensions too. A new image resets swaps, variants
+ * and the undo stack: yesterday's colors are not today's. */
+function plLoadSource(img, name) {
+  const P = plState();
+  const scale = Math.min(1, PL_CAP / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const cx = cv.getContext("2d", { willReadFrequently: true });
+  cx.drawImage(img, 0, 0, w, h);
+  const id = cx.getImageData(0, 0, w, h);
+  P.src = { data: id.data, w, h };
+  P.imgW = img.width; P.imgH = img.height;
+  P.name = name || "sprite";
+  P.work = { data: new Uint8ClampedArray(id.data), w, h };
+  P.undo = [];
+  P.fromIdx = -1;
+  if (img.close) img.close();
+  const view = $("#plCanvas");
+  if (view) { view.width = w; view.height = h; }
+  const empty = $("#plEmpty");
+  if (empty) empty.hidden = true;
+  plExtract();
+  plDraw();
+  plPaintPanel();
+}
+
+async function plLoadFile(file) {
+  if (!file) return;
+  try {
+    const bmp = await createImageBitmap(file);
+    plLoadSource(bmp, file.name || "sprite");
+  } catch (err) {
+    plStatus("couldn't read that image — try a PNG or JPG.");
+  }
+}
+
+function plExportPNG() {
+  const P = plState();
+  if (!P.work) { plStatus("Load a sprite or the sample first."); return; }
+  downloadCanvas(plCanvasFrom(P.work.data, P.work.w, P.work.h),
+    "m4ster-palette-" + P.work.w + "x" + P.work.h + ".png");
+}
+
+function plExportGpl() {
+  const P = plState();
+  if (!P.colors.length) { plStatus("Load a sprite or the sample first."); return; }
+  downloadBytes(new TextEncoder().encode(plGplText(P.colors, P.name)), "m4ster-palette.gpl", "text/plain");
+}
+
+function plExportJson() {
+  const P = plState();
+  if (!P.colors.length) { plStatus("Load a sprite or the sample first."); return; }
+  downloadJSON({
+    name: P.name,
+    colors: P.colors.map(c => ({ hex: plHex(c), r: c.r, g: c.g, b: c.b, count: c.count })),
+  }, "m4ster-palette.json");
+}
+
+/* ---------------- Palette Lab wiring ---------------- */
+
+let plStaticWired = false;
+
+function plWireStage() {
+  const box = $("#plStageBox");
+  if (box) {
+    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.add("pl-over");
+    }));
+    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.remove("pl-over");
+    }));
+    box.addEventListener("drop", (e) => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) plLoadFile(f);
+    });
+  }
+  // paste an image while the Palette lane is open
+  document.addEventListener("paste", (e) => {
+    if (state.category !== "palette") return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.type && it.type.indexOf("image/") === 0) {
+        const f = it.getAsFile();
+        if (f) { plLoadFile(f); e.preventDefault(); break; }
+      }
+    }
+  });
+}
+
+function wirePalette() {
+  const P = plState();
+  $("#plSample").onclick = () => plLoadSource(plMakeSample(), "sample knight");
+  $("#plPick").onclick = () => $("#plFile").click();
+  $("#plFile").onchange = (e) => {
+    plLoadFile(e.target.files[0]);
+    e.target.value = "";
+  };
+  const to = $("#plTo");
+  if (to) to.oninput = () => { P.toHex = to.value; };
+  const tol = $("#plTol");
+  if (tol) tol.oninput = () => {
+    P.tolerance = +tol.value;
+    const v = $("#plTolVal");
+    if (v) v.textContent = tol.value;
+  };
+  $("#plApply").onclick = plApplySwap;
+  $("#plUndo").onclick = plUndoOp;
+  $("#plExport").onclick = plExportPNG;
+  $("#plGpl").onclick = plExportGpl;
+  $("#plJson").onclick = plExportJson;
+  if (!plStaticWired) {
+    plStaticWired = true;
+    plWireStage();
+  }
+  plPaintPanel();
+  if (P.work) plDraw();
+  syncPaletteMode();
+}
+
+/* ================= v8.10: GIF Sheet =================
+ * Turn an animated GIF into a sprite sheet: every frame decoded
+ * and composited, laid out in a grid, exported as one PNG plus a
+ * JSON manifest with each frame's rect and duration.
+ *
+ * The decoder below is written from the GIF89a spec by hand — no
+ * library — because the whole point of this site is that the work
+ * happens in your browser. It handles the parts real GIFs use:
+ * global and local color tables, transparency, interlacing, frame
+ * delays, and the disposal rules that say what happens to the
+ * canvas between frames. */
+
+function gfState() {
+  if (!state.gif) {
+    state.gif = {
+      frames: [],      // composited frames: [{ data, duration }] at logical-screen size
+      frameW: 0, frameH: 0, // the GIF's logical screen = one sheet cell
+      name: "animation",
+      cols: 4,         // manual column count (used when autoCols is off)
+      autoCols: true,  // auto = the near-square grid
+    };
+  }
+  return state.gif;
+}
+
+function syncGifMode() {
+  const on = state.category === "gif";
+  const aside = document.querySelector("aside.controls");
+  const stage = document.querySelector("section.stage-panel");
+  if (aside) aside.classList.toggle("mode-gif", on);
+  if (stage) stage.classList.toggle("mode-gif", on);
+  document.body.classList.toggle("mode-gif", on);
+  const sec = $("#gif");
+  if (sec) sec.hidden = !on;
+  syncToolChrome();
+}
+
+function gfStatus(msg) {
+  const ro = $("#gfReadout");
+  if (ro) ro.textContent = msg;
+}
+
+/* ---- the decoder ---- */
+
+/* a cursor over the file's bytes: read one byte, a little-endian
+ * 16-bit word, or a run of bytes, without repeating index math.
+ * Reading past the end yields undefined/NaN, which the parser
+ * treats as "file over" — truncated GIFs stop cleanly. */
+function gfReader(bytes) {
+  let pos = 0;
+  return {
+    byte() { return bytes[pos++]; },
+    word() { const v = bytes[pos] | (bytes[pos + 1] << 8); pos += 2; return v; },
+    take(n) { const out = bytes.subarray(pos, pos + n); pos += n; return out; },
+    skip(n) { pos += n; },
+  };
+}
+
+/* a color table is 3 bytes per color (red, green, blue); its size
+ * rides in flag bits as 2^(n+1) colors */
+function gfReadPalette(rd, sizeCode) {
+  const count = 2 << sizeCode;          // sizeCode 0..7 -> 2..256 colors
+  const raw = rd.take(count * 3);
+  const pal = new Array(count);
+  for (let i = 0; i < count; i++) {
+    pal[i] = [raw[i * 3], raw[i * 3 + 1], raw[i * 3 + 2]];
+  }
+  return pal;
+}
+
+/* several GIF chunks are stored as "sub-blocks": a length byte,
+ * that many bytes, repeat — ended by a zero length. Skip one run. */
+function gfSkipBlocks(rd) {
+  for (;;) {
+    const n = rd.byte();
+    if (!n) return;
+    rd.skip(n);
+  }
+}
+
+/* GIF's flavor of LZW. Codes are packed LSB-first into the data
+ * sub-blocks and widen from (minCodeSize + 1) bits up to 12 bits as
+ * the dictionary grows. Two codes are special: "clear" resets the
+ * dictionary, "end" stops the stream. The output is one palette
+ * index per pixel, in stored row order. */
+function gfLzwDecode(minCodeSize, chunks, expected) {
+  // glue the size-prefixed sub-blocks into one flat byte array
+  let total = 0;
+  for (const c of chunks) total += c.length;
+  const data = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { data.set(c, off); off += c.length; }
+
+  const clear = 1 << minCodeSize;       // e.g. min 8 -> clear = 256
+  const endCode = clear + 1;
+  const out = new Uint8Array(expected);
+  let outLen = 0;
+
+  let dict = null;                      // code -> array of indices
+  let codeSize = 0, nextCode = 0;
+  function resetDict() {
+    dict = [];
+    for (let i = 0; i < clear; i++) dict.push([i]);
+    dict.push(null, null);              // the clear + end slots
+    codeSize = minCodeSize + 1;
+    nextCode = endCode + 1;
+  }
+  resetDict();
+
+  let bitPos = 0;
+  const totalBits = data.length * 8;
+  function readCode() {
+    if (bitPos + codeSize > totalBits) return -1;
+    let v = 0;
+    for (let i = 0; i < codeSize; i++) {
+      const bit = (data[(bitPos + i) >> 3] >> ((bitPos + i) & 7)) & 1;
+      v |= bit << i;
+    }
+    bitPos += codeSize;
+    return v;
+  }
+
+  let prev = null;                      // the previous code's string
+  while (outLen < expected) {
+    const code = readCode();
+    if (code === -1 || code === endCode) break;
+    if (code === clear) { resetDict(); prev = null; continue; }
+    let entry;
+    if (dict[code]) {
+      entry = dict[code];
+    } else if (code === nextCode && prev) {
+      // the famous special case: the string is prev + prev's first
+      entry = prev.concat(prev[0]);
+    } else {
+      break;                            // corrupt stream — keep what we have
+    }
+    for (let i = 0; i < entry.length && outLen < expected; i++) out[outLen++] = entry[i];
+    if (prev && nextCode < 4096) {
+      dict[nextCode++] = prev.concat(entry[0]);
+      // the next code in the stream may be as large as the next
+      // free dictionary slot — the moment that slot outgrows the
+      // current width, the codes that follow are written one bit
+      // wider, so widen in step (12 bits is the format's ceiling)
+      if (nextCode === (1 << codeSize) && codeSize < 12) codeSize++;
+    }
+    prev = entry;
+  }
+  return out.subarray(0, outLen);
+}
+
+/* interlaced GIFs store their rows in four passes — rows 0, 8, 16…,
+ * then 4, 12, 20…, then 2, 6, 10…, then the odd rows. Given the
+ * stored row number, hand back the real row it belongs to. */
+function gfInterlaceRow(stored, height) {
+  const passes = [[0, 8], [4, 8], [2, 4], [1, 2]];
+  let row = stored;
+  for (let p = 0; p < passes.length; p++) {
+    const start = passes[p][0], step = passes[p][1];
+    const count = Math.ceil((height - start) / step);
+    if (row < count) return start + row * step;
+    row -= count;
+  }
+  return stored;
+}
+
+/* decode a whole GIF. Returns { w, h, frames } where every frame is
+ * fully composited onto the logical screen — what you'd see if the
+ * animation played — with its display duration in ms. Throws an
+ * Error with a short message when the bytes aren't a usable GIF. */
+function gfDecode(bytes) {
+  if (bytes.length < 13 ||
+      bytes[0] !== 0x47 || bytes[1] !== 0x49 || bytes[2] !== 0x46) {  // "GIF"
+    throw new Error("not a GIF file");
+  }
+  const rd = gfReader(bytes);
+  rd.skip(6);                                   // "GIF87a" / "GIF89a"
+  const W = rd.word(), H = rd.word();           // logical screen size
+  if (!(W > 0) || !(H > 0) || W > 8192 || H > 8192) {
+    throw new Error("that GIF's header looks wrong");
+  }
+  const packed = rd.byte();
+  rd.skip(1);                                   // background color index
+  rd.skip(1);                                   // aspect ratio (unused)
+  const gct = (packed & 0x80) ? gfReadPalette(rd, packed & 0x07) : null;
+
+  const canvas = new Uint8ClampedArray(W * H * 4);  // starts transparent
+  const frames = [];
+  let gce = null;        // graphic control waiting for the next image
+  let snapshot = null;   // canvas copy a disposal-3 frame restores to
+
+  for (;;) {
+    const tag = rd.byte();
+    if (tag === 0x3B || tag === undefined) break;   // ";" trailer, or EOF
+    if (tag === 0x21) {                             // extension block
+      const label = rd.byte();
+      if (label === 0xF9) {                         // graphic control
+        rd.byte();                                  // block size (always 4)
+        const p = rd.byte();
+        const delayCs = rd.word();
+        const transIndex = rd.byte();
+        rd.byte();                                  // block terminator
+        gce = {
+          disposal: (p >> 2) & 7,
+          transparent: (p & 1) ? transIndex : -1,
+          // a stored delay of 0 (or 1) is a lie every browser
+          // ignores — they all play it as 100ms, so we report 100
+          duration: delayCs < 2 ? 100 : delayCs * 10,
+        };
+      } else {
+        gfSkipBlocks(rd);   // comments, app data (loop count), plain text…
+      }
+      continue;
+    }
+    if (tag !== 0x2C) break;                        // unknown byte — bail out
+
+    // image descriptor: where this frame sits on the logical screen
+    const fx = rd.word(), fy = rd.word(), fw = rd.word(), fh = rd.word();
+    const ipacked = rd.byte();
+    let palette = gct;
+    if (ipacked & 0x80) palette = gfReadPalette(rd, ipacked & 0x07);
+    const interlaced = (ipacked & 0x40) !== 0;
+    const minCode = rd.byte();
+    const chunks = [];
+    for (;;) {
+      const n = rd.byte();
+      if (!n) break;
+      chunks.push(rd.take(n));
+    }
+    if (!palette || !(fw > 0) || !(fh > 0) || fw * fh > 16777216) break;
+    const indices = gfLzwDecode(minCode, chunks, fw * fh);
+
+    const disposal = gce ? gce.disposal : 0;
+    const transIndex = gce ? gce.transparent : -1;
+    // disposal 3 ("restore to previous") needs the canvas as it was
+    // BEFORE this frame — snapshot before painting, not after
+    if (disposal === 3) snapshot = canvas.slice();
+
+    // paint the frame's pixels. A pixel whose index is the frame's
+    // transparent index leaves the canvas underneath untouched.
+    for (let row = 0; row < fh; row++) {
+      const y = fy + (interlaced ? gfInterlaceRow(row, fh) : row);
+      if (y >= H) continue;
+      for (let x = 0; x < fw; x++) {
+        const px = fx + x;
+        if (px >= W) continue;
+        const idx = indices[row * fw + x];
+        if (idx === undefined || idx === transIndex) continue;
+        const col = palette[idx];
+        if (!col) continue;
+        const o = (y * W + px) * 4;
+        canvas[o] = col[0]; canvas[o + 1] = col[1]; canvas[o + 2] = col[2]; canvas[o + 3] = 255;
+      }
+    }
+
+    frames.push({ data: canvas.slice(), duration: gce ? gce.duration : 100 });
+
+    // …then dispose of this frame, ready for the next one
+    if (disposal === 2) {
+      // restore the frame's rect to the background. The spec says
+      // "background color", but browsers composite GIFs over
+      // transparency — and a sprite sheet wants the alpha — so the
+      // rect goes back to fully transparent.
+      for (let y = fy; y < fy + fh && y < H; y++) {
+        for (let x = fx; x < fx + fw && x < W; x++) {
+          const o = (y * W + x) * 4;
+          canvas[o] = canvas[o + 1] = canvas[o + 2] = canvas[o + 3] = 0;
+        }
+      }
+    } else if (disposal === 3 && snapshot) {
+      canvas.set(snapshot);
+    }
+    gce = null;
+  }
+
+  if (!frames.length) throw new Error("no frames found in that GIF");
+  return { w: W, h: H, frames };
+}
+
+/* grid math for the sheet, shared by the preview, both exports and
+ * the readout — what you see is what you download. Auto columns =
+ * the near-square grid (same rule as the Atlas packer). */
+function gfLayout(count, frameW, frameH, cols, autoCols) {
+  const c = autoCols ? Math.max(1, Math.ceil(Math.sqrt(count))) : Math.max(1, cols | 0);
+  const rows = Math.max(1, Math.ceil(count / c));
+  return { cols: c, rows, sheetW: c * frameW, sheetH: rows * frameH };
+}
+
+/* lay every composited frame into one sheet canvas */
+function gfSheetCanvas() {
+  const G = gfState();
+  const lay = gfLayout(G.frames.length, G.frameW, G.frameH, G.cols, G.autoCols);
+  const cv = document.createElement("canvas");
+  cv.width = lay.sheetW; cv.height = lay.sheetH;
+  const cx = cv.getContext("2d");
+  G.frames.forEach((f, i) => {
+    const cell = document.createElement("canvas");
+    cell.width = G.frameW; cell.height = G.frameH;
+    cell.getContext("2d").putImageData(new ImageData(f.data, G.frameW, G.frameH), 0, 0);
+    cx.drawImage(cell, (i % lay.cols) * G.frameW, Math.floor(i / lay.cols) * G.frameH);
+  });
+  return { cv, lay };
+}
+
+function gfDraw() {
+  const G = gfState();
+  const view = $("#gfCanvas");
+  if (!view || !G.frames.length) return;
+  const built = gfSheetCanvas();
+  view.width = built.lay.sheetW;
+  view.height = built.lay.sheetH;
+  view.getContext("2d").drawImage(built.cv, 0, 0);
+  gfStatus(G.frames.length + (G.frames.length === 1 ? " frame" : " frames") +
+    " · " + G.frameW + "x" + G.frameH + " each · sheet " +
+    built.lay.sheetW + "x" + built.lay.sheetH);
+}
+
+/* bring a GIF in (file, paste, drop or the sample). A new GIF
+ * replaces the old sheet wholesale — frames from two animations
+ * never mix. */
+function gfLoadBytes(buf, name) {
+  const G = gfState();
+  let decoded;
+  try {
+    decoded = gfDecode(new Uint8Array(buf));
+  } catch (err) {
+    gfStatus("couldn't decode that GIF — " + err.message + ".");
+    return;
+  }
+  G.frames = decoded.frames;
+  G.frameW = decoded.w; G.frameH = decoded.h;
+  G.name = name || "animation";
+  const empty = $("#gfEmpty");
+  if (empty) empty.hidden = true;
+  gfDraw();
+}
+
+async function gfLoadFile(file) {
+  if (!file) return;
+  try {
+    gfLoadBytes(await file.arrayBuffer(), (file.name || "animation").replace(/\.gif$/i, ""));
+  } catch (err) {
+    gfStatus("couldn't read that file.");
+  }
+}
+
+/* the sample bounces in a separate file next to the AI models — it
+ * ships with the site, so a miss here means the deploy is behind,
+ * not that the visitor did anything wrong */
+async function gfLoadSample() {
+  try {
+    const res = await fetch("assets/samples/sample-bounce.gif");
+    if (!res.ok) throw new Error("missing");
+    gfLoadBytes(await res.arrayBuffer(), "sample bounce");
+  } catch (err) {
+    gfStatus("the sample GIF isn't on the server yet — drop any animated GIF here instead.");
+  }
+}
+
+function gfExportPNG() {
+  const G = gfState();
+  if (!G.frames.length) { gfStatus("Load a GIF or the sample first."); return; }
+  const built = gfSheetCanvas();
+  downloadCanvas(built.cv, "m4ster-gifsheet-" + built.lay.sheetW + "x" + built.lay.sheetH + ".png");
+}
+
+function gfExportJSON() {
+  const G = gfState();
+  if (!G.frames.length) { gfStatus("Load a GIF or the sample first."); return; }
+  const lay = gfLayout(G.frames.length, G.frameW, G.frameH, G.cols, G.autoCols);
+  downloadJSON({
+    frames: G.frames.map((f, i) => ({
+      x: (i % lay.cols) * G.frameW,
+      y: Math.floor(i / lay.cols) * G.frameH,
+      w: G.frameW, h: G.frameH,
+      duration: f.duration,
+    })),
+    meta: {
+      frameCount: G.frames.length,
+      frameSize: { w: G.frameW, h: G.frameH },
+      sheetSize: { w: lay.sheetW, h: lay.sheetH },
+    },
+  }, "m4ster-gifsheet.json");
+}
+
+/* ---------------- GIF Sheet wiring ---------------- */
+
+let gfStaticWired = false;
+
+function gfWireStage() {
+  const box = $("#gfStageBox");
+  if (box) {
+    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.add("gf-over");
+    }));
+    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
+      e.preventDefault();
+      box.classList.remove("gf-over");
+    }));
+    box.addEventListener("drop", (e) => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) gfLoadFile(f);
+    });
+  }
+  // paste a GIF while the GIF Sheet lane is open
+  document.addEventListener("paste", (e) => {
+    if (state.category !== "gif") return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.type && it.type.indexOf("image/") === 0) {
+        const f = it.getAsFile();
+        if (f) { gfLoadFile(f); e.preventDefault(); break; }
+      }
+    }
+  });
+}
+
+function wireGif() {
+  const G = gfState();
+  $("#gfSample").onclick = gfLoadSample;
+  $("#gfPick").onclick = () => $("#gfFile").click();
+  $("#gfFile").onchange = (e) => {
+    gfLoadFile(e.target.files[0]);
+    e.target.value = "";
+  };
+  const auto = $("#gfAuto");
+  if (auto) auto.onchange = () => {
+    G.autoCols = auto.checked;
+    const c = $("#gfCols");
+    if (c) c.disabled = G.autoCols;
+    gfDraw();
+  };
+  const cols = $("#gfCols");
+  if (cols) cols.onchange = () => {
+    G.cols = Math.max(1, Math.min(64, +cols.value || 1));
+    cols.value = G.cols;
+    gfDraw();
+  };
+  $("#gfExport").onclick = gfExportPNG;
+  $("#gfJson").onclick = gfExportJSON;
+  if (!gfStaticWired) {
+    gfStaticWired = true;
+    gfWireStage();
+  }
+  if (G.frames.length) gfDraw();
+  syncGifMode();
+}
+
 /* ================= wiring ================= */
 
 function init() {
@@ -5287,6 +8408,12 @@ function init() {
   syncSlicerMode();
   syncDraglabMode();
   syncCutoutMode();
+  syncUpscaleMode();
+  syncAtlasMode();
+  syncNormalmapMode();
+  syncTilerMode();
+  syncPaletteMode();
+  syncGifMode();
 
   const toolBackBtn = document.getElementById("toolBack");
   if (toolBackBtn) toolBackBtn.onclick = () => {
@@ -5306,6 +8433,12 @@ function init() {
       syncSlicerMode();
       syncDraglabMode();
       syncCutoutMode();
+      syncUpscaleMode();
+      syncAtlasMode();
+      syncNormalmapMode();
+      syncTilerMode();
+      syncPaletteMode();
+      syncGifMode();
       syncAiModelUI();
     };
   });
@@ -6005,6 +9138,12 @@ function initV6() {
       syncSlicerMode();
       syncDraglabMode();
       syncCutoutMode();
+      syncUpscaleMode();
+      syncAtlasMode();
+      syncNormalmapMode();
+      syncTilerMode();
+      syncPaletteMode();
+      syncGifMode();
       syncAiModelUI();
       document.getElementById("tool").scrollIntoView({ behavior: "smooth", block: "start" });
     };
@@ -7815,7 +10954,13 @@ function wire3DLab() {
     return !(document.body.classList.contains("mode-pixelart") ||
              document.body.classList.contains("mode-slicer") ||
              document.body.classList.contains("mode-draglab") ||
-             document.body.classList.contains("mode-cutout"));
+             document.body.classList.contains("mode-cutout") ||
+             document.body.classList.contains("mode-upscale") ||
+             document.body.classList.contains("mode-atlas") ||
+             document.body.classList.contains("mode-normalmap") ||
+             document.body.classList.contains("mode-tiler") ||
+             document.body.classList.contains("mode-palette") ||
+             document.body.classList.contains("mode-gif"));
   }
   function render() {
     var on = wizardOn();

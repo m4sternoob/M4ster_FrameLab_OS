@@ -111,6 +111,30 @@
       <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="7" width="34" height="34" rx="7" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="5 4"/><circle cx="24" cy="19" r="5.5" fill="currentColor"/><path d="M14.5 35c1.6-5.6 5-8.2 9.5-8.2s7.9 2.6 9.5 8.2" fill="currentColor"/><path d="M38 4l1.1 2.9L42 8l-2.9 1.1L38 12l-1.1-2.9L34 8l2.9-1.1z" fill="currentColor"/></svg>
       <span class="tool-text"><b>Cutout Lab</b><span>AI background removal &middot; runs in your browser</span></span>
     </button>
+    <button class="tool-card" data-cat="upscale" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M17 6H6v11M31 6h11v11M17 42H6V31M31 42h11V31" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><rect x="18" y="18" width="12" height="12" fill="currentColor"/></svg>
+      <span class="tool-text"><b>Upscale Lab</b><span>AI enlargement &middot; runs in your browser</span></span>
+    </button>
+    <button class="tool-card" data-cat="atlas" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="6" width="20" height="14" fill="currentColor"/><rect x="28" y="6" width="14" height="14" fill="currentColor" opacity=".55"/><rect x="6" y="22" width="12" height="20" fill="currentColor" opacity=".55"/><rect x="20" y="22" width="22" height="9" fill="currentColor"/><rect x="20" y="33" width="22" height="9" fill="currentColor" opacity=".55"/></svg>
+      <span class="tool-text"><b>Atlas Packer</b><span>loose frames &rarr; one sprite sheet + manifest &middot; 100% offline</span></span>
+    </button>
+    <button class="tool-card" data-cat="normalmap" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="16" fill="currentColor" opacity=".3"/><path d="M24 8a16 16 0 0 1 0 32z" fill="currentColor"/><circle cx="19" cy="18" r="3.5" fill="var(--panel)"/></svg>
+      <span class="tool-text"><b>Normal Map Lab</b><span>flat sprite &rarr; normal + AO + specular maps &middot; 100% offline</span></span>
+    </button>
+    <button class="tool-card" data-cat="tiler" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="6" width="16" height="16" fill="currentColor"/><rect x="26" y="6" width="16" height="16" fill="currentColor" opacity=".55"/><rect x="6" y="26" width="16" height="16" fill="currentColor" opacity=".55"/><rect x="26" y="26" width="16" height="16" fill="currentColor"/><path d="M24 6v36M6 24h36" stroke="var(--panel)" stroke-width="2"/></svg>
+      <span class="tool-text"><b>Seamless Tiler</b><span>any texture &rarr; seamless repeat &middot; 100% offline</span></span>
+    </button>
+    <button class="tool-card" data-cat="palette" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="15" cy="14" r="6" fill="currentColor"/><circle cx="31" cy="12" r="5" fill="currentColor" opacity=".55"/><circle cx="36" cy="27" r="6" fill="currentColor" opacity=".75"/><circle cx="20" cy="29" r="7" fill="currentColor" opacity=".4"/><circle cx="30" cy="39" r="4" fill="currentColor"/></svg>
+      <span class="tool-text"><b>Palette Lab</b><span>pull a sprite's colors, swap &amp; recolor &middot; 100% offline</span></span>
+    </button>
+    <button class="tool-card" data-cat="gif" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="15" y="4" width="18" height="40" rx="3" fill="currentColor" opacity=".85"/><rect x="18" y="8" width="3" height="4" fill="var(--panel)"/><rect x="18" y="16" width="3" height="4" fill="var(--panel)"/><rect x="18" y="24" width="3" height="4" fill="var(--panel)"/><rect x="18" y="32" width="3" height="4" fill="var(--panel)"/><rect x="27" y="8" width="3" height="4" fill="var(--panel)"/><rect x="27" y="16" width="3" height="4" fill="var(--panel)"/><rect x="27" y="24" width="3" height="4" fill="var(--panel)"/><rect x="27" y="32" width="3" height="4" fill="var(--panel)"/><path d="M21 20l7 4-7 4z" fill="var(--panel)"/></svg>
+      <span class="tool-text"><b>GIF Sheet</b><span>animated GIF &rarr; sprite sheet + timings &middot; 100% offline</span></span>
+    </button>
   </div>
 </section>
 
@@ -305,7 +329,7 @@
           <p class="dim">Drop an image here, paste one, or hit <b>Try the sample</b> in the panel.<br>Then click the photo to add a point and drag it.</p>
         </div>
       </div>
-      <p class="draglab-hint">Click to add a point, drag it to pull the picture.</p>
+      <p class="draglab-hint" id="dlStageHint">Click to add a point, drag it to pull the picture.</p>
       <p class="draglab-readout dim" id="dlReadout" role="status" aria-live="polite"></p>
     </section>
 
@@ -319,6 +343,84 @@
       </div>
       <p class="cutout-hint">Your photo never leaves your device — the AI runs right here.</p>
       <p class="cutout-readout dim" id="coReadout" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="upscale" class="upscale-side" hidden aria-label="Upscale Lab — AI image enlargement">
+      <div class="upscale-box" id="upStageBox">
+        <canvas id="upCanvas" width="480" height="360"></canvas>
+        <div class="upscale-empty" id="upEmpty">
+          <p><strong>Upscale Lab</strong> — AI enlargement, in your browser.</p>
+          <p class="dim">Drop an image here, paste one, or hit <b>Try the sample</b> in the panel.<br>Then hit <b>Upscale &times;4</b>.</p>
+        </div>
+      </div>
+      <div class="up-compare" id="upCompareRow" hidden>
+        <span class="dim">before</span>
+        <input type="range" id="upCompare" min="0" max="100" value="50" aria-label="before and after comparison">
+        <span class="dim">after</span>
+      </div>
+      <div class="up-progress" id="upProgressRow" hidden><div class="up-progress-bar" id="upProgressBar"></div></div>
+      <p class="upscale-hint">Drag the slider to compare — your image never leaves your device.</p>
+      <p class="upscale-readout dim" id="upReadout" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="atlas" class="atlas-side" hidden aria-label="Atlas Packer — pack loose sprites into one sheet">
+      <div class="atlas-box" id="atStageBox">
+        <canvas id="atCanvas" width="480" height="360"></canvas>
+        <div class="atlas-empty" id="atEmpty">
+          <p><strong>Atlas Packer</strong> — turn loose frames into one game-ready sprite sheet.</p>
+          <p class="dim">Drop images here, paste them, or hit <b>Add images</b> in the panel.<br>Then hit <b>Pack</b>.</p>
+        </div>
+      </div>
+      <p class="atlas-hint">Sprites are trimmed of transparent borders — the manifest records the trim so engines restore each frame exactly.</p>
+      <p class="atlas-readout dim" id="atReadout" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="normalmap" class="normalmap-side" hidden aria-label="Normal Map Lab — normal, AO and specular maps from a sprite">
+      <div class="normalmap-box" id="nmStageBox">
+        <canvas id="nmCanvas" width="480" height="360"></canvas>
+        <div class="normalmap-empty" id="nmEmpty">
+          <p><strong>Normal Map Lab</strong> — turn a flat sprite into a lit one.</p>
+          <p class="dim">Drop an image here, paste one, or hit <b>Try the sample</b> in the panel.<br>Then pick a map and export it.</p>
+        </div>
+      </div>
+      <p class="normalmap-hint">In Lit view, move your pointer over the picture — the light follows.</p>
+      <p class="normalmap-readout dim" id="nmReadout" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="tiler" class="tiler-side" hidden aria-label="Seamless Tiler — make any texture repeat without visible seams">
+      <div class="tiler-box" id="tlStageBox">
+        <canvas id="tlCanvas" width="480" height="360"></canvas>
+        <div class="tiler-empty" id="tlEmpty">
+          <p><strong>Seamless Tiler</strong> — make any texture repeat without visible seams.</p>
+          <p class="dim">Drop a texture here, paste one, or hit <b>Try the sample</b> in the panel.<br>Heal the seams, check the 3&times;3, then export.</p>
+        </div>
+      </div>
+      <p class="tiler-hint">Seamless Tiler — make any texture repeat without visible seams. Best on organic and soft textures; hard geometric patterns will still show.</p>
+      <p class="tiler-readout dim" id="tlReadout" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="palette" class="palette-side" hidden aria-label="Palette Lab — extract, swap and spin a sprite's colors">
+      <div class="palette-box" id="plStageBox">
+        <canvas id="plCanvas" width="480" height="360"></canvas>
+        <div class="palette-empty" id="plEmpty">
+          <p><strong>Palette Lab</strong> — pull a sprite's colors out.</p>
+          <p class="dim">Drop a sprite here, paste one, or hit <b>Try the sample</b> in the panel.<br>Then click a color to swap it, or spin a variant.</p>
+        </div>
+      </div>
+      <p class="palette-hint">Palette Lab — pull a sprite's colors out, swap them, spin off recolor variants for teams, tiers and skins. All in your browser.</p>
+      <p class="palette-readout dim" id="plReadout" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="gif" class="gif-side" hidden aria-label="GIF Sheet — turn an animated GIF into a sprite sheet">
+      <div class="gif-box" id="gfStageBox">
+        <canvas id="gfCanvas" width="480" height="360"></canvas>
+        <div class="gif-empty" id="gfEmpty">
+          <p><strong>GIF Sheet</strong> — an animated GIF in, a sprite sheet out.</p>
+          <p class="dim">Drop a GIF here, paste one, or hit <b>Try the sample</b> in the panel.<br>Every frame lands in the sheet, with its timing in the JSON.</p>
+        </div>
+      </div>
+      <p class="gif-hint">GIF Sheet — turn an animated GIF into a sprite sheet, frames and timings included. Decoded right in your browser; nothing is uploaded.</p>
+      <p class="gif-readout dim" id="gfReadout" role="status" aria-live="polite"></p>
     </section>
 
     <div id="retryBar" class="retry-bar" hidden>
