@@ -12043,6 +12043,7 @@ document.addEventListener("DOMContentLoaded", function () {
       /* same token rule as the Generate button: the saved HF token (if
        * any) is read once at run start and rides the direct calls */
       try { M3_TOKEN = (aiKeys().huggingface || "").trim(); } catch (e) {}
+      if (!window.M3_TEXT_DIRECT_OFF) {
       try {
         const direct = await m3RunHunyuanText(text, (t) => t3dStatus(t));
         const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
@@ -12051,10 +12052,18 @@ document.addEventListener("DOMContentLoaded", function () {
         t3dStatus("Done — built straight from your words by Hunyuan3D-2 Mini Turbo. Shape only: the mesh is untextured, ready for your own materials.");
         return;
       } catch (directErr) {
-        t3dStatus("The direct text-to-mesh route could not answer (" + humanErr(directErr).slice(0, 120) + ") — falling back: drawing an image from your words first, then building the mesh from it…");
+        if (/Text to 3D is disable/i.test(directErr && directErr.message ? directErr.message : String(directErr))) {
+          /* the provider has text-to-3D switched off server-side — do not
+           * pay the queue wait again on later runs this session */
+          window.M3_TEXT_DIRECT_OFF = true;
+          t3dStatus("The direct text-to-mesh route is switched off at the provider right now — drawing an image from your words first, then building the mesh from it…");
+        } else {
+          t3dStatus("The direct text-to-mesh route could not answer (" + humanErr(directErr).slice(0, 120) + ") — falling back: drawing an image from your words first, then building the mesh from it…");
+        }
         /* hold the note for a beat so it can be read before the
          * fallback's own statuses take over the line */
         await new Promise((r) => setTimeout(r, 1200));
+      }
       }
       const shaped = text + ", full body, entire figure visible with empty margin around it, head large and clearly detailed, standing straight facing the camera, plain solid white background, studio product photography, sharp focus, no text";
       let bmp = null;
