@@ -17,7 +17,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="css/style.css">
-<script>try{var _t=localStorage.getItem("msg_theme_v1");if(_t)document.documentElement.setAttribute("data-theme",_t);}catch(e){}document.documentElement.classList.add("js");try{if(localStorage.getItem("m4ster.animations")!=="1")document.documentElement.classList.add("anim-off");}catch(e){document.documentElement.classList.add("anim-off");}</script>
+<script>try{var _t=localStorage.getItem("msg_theme_v1");if(_t)document.documentElement.setAttribute("data-theme",_t);}catch(e){}document.documentElement.classList.add("js");try{if(localStorage.getItem("m4ster.animations")!=="1")document.documentElement.classList.add("anim-off");}catch(e){document.documentElement.classList.add("anim-off");}try{var _f=localStorage.getItem("m4ster.frost");if(_f!==null){var _fv=parseFloat(_f);if(isFinite(_fv))document.documentElement.style.setProperty("--frost",String(Math.min(92,Math.max(45,_fv))));}}catch(e){}</script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -54,6 +54,7 @@
     </div>
   </button>
   <div class="dim-flip" role="tablist" aria-label="Lab dimension">
+    <span class="flip-thumb" aria-hidden="true"></span>
     <button class="flip-btn active" id="flip2d" type="button">2D · Sprites</button>
     <button class="flip-btn" id="flip3d" type="button">3D · Mesh</button>
   </div>
@@ -881,6 +882,11 @@
   <p class="dim" style="margin:2px 0 0;font-size:12px">Off = still site: no drifting background, marquees, logo pulse or scroll entrances. Sprite previews still play.</p>
   <div class="cust-label">Theme</div>
   <div class="swatches" id="swatches"></div>
+  <div class="cust-label">Glass</div>
+  <div class="cust-row">
+    <span>Frost transparency</span>
+    <input type="range" id="frostRange" min="45" max="92" value="74" aria-label="Frost transparency">
+  </div>
   <div class="cust-label">Background aura</div>
   <div class="cust-row">
     <span>Aurora background</span>

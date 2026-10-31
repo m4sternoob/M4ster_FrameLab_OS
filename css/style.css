@@ -84,6 +84,50 @@ html[data-theme="porcelain"] {
   --glow: rgba(12, 102, 228, .22); --vignette: rgba(23, 43, 77, .08);
 }
 
+/* ---------- v8.12: liquid-glass tokens — ONE frosted material for both
+ * sides, expressed in each theme's own hues. --frost is the single
+ * opacity knob (45–92, default 74) driven live by the Customize
+ * "Frost transparency" slider (localStorage "m4ster.frost", applied
+ * pre-paint by the head script). The strong variant rides the same
+ * knob +14, clamped at 96. The -dark pair serves the 3D studio, which
+ * stays dark in every theme by design: same knob, same theme-tinted
+ * edge, dark base. Plain rgba lines come first as the fallback for
+ * engines without color-mix. ---------- */
+:root {
+  --frost: 74;
+  --glass-bg: rgba(18, 18, 28, .72);
+  --glass-bg: color-mix(in srgb, var(--panel) calc(var(--frost) * 1%), transparent);
+  --glass-bg-strong: rgba(18, 18, 28, .86);
+  --glass-bg-strong: color-mix(in srgb, var(--panel) calc(min(var(--frost) + 14, 96) * 1%), transparent);
+  --glass-bg-dark: rgba(16, 17, 22, .74);
+  --glass-bg-dark: color-mix(in srgb, #14151a calc(var(--frost) * 1%), transparent);
+  --glass-bg-dark-strong: rgba(16, 17, 22, .88);
+  --glass-bg-dark-strong: color-mix(in srgb, #14151a calc(min(var(--frost) + 14, 96) * 1%), transparent);
+  --glass-edge: rgba(255, 255, 255, .14);
+  --glass-edge: color-mix(in srgb, var(--violet-soft) 26%, transparent);
+  --glass-shadow: 0 16px 40px rgba(0, 0, 0, .38), inset 0 1px 0 rgba(255, 255, 255, .07);
+  --glass-blur: blur(18px) saturate(1.6);
+}
+.glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+}
+.glass-strong {
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+}
+.glass-flat {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+}
+
 /* ---------- animated background aura (theme-aware orbs, transform-only) ---------- */
 .aura {
   position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
@@ -1026,6 +1070,13 @@ html.anim-off .monogram .glow-m, html.anim-off .monogram .glow-f, html.anim-off 
 html.anim-off .cursor-orb.is-cta::after { animation: none; }
 html.anim-off .stepper li.active .dot, html.anim-off .stepper li.done .dot { animation: none; }
 html.anim-off .controls.wizard .ctl-group.wiz-on { animation: none; }
+/* v8.12 glass pass: the pick pop + status flash are decorative keyframes,
+ * so they rest under anim-off too (the !important beats the glass-live
+ * rule's equal specificity later in the file). Press squash and toggle
+ * slides are transitions and stay live on purpose. */
+html.anim-off .seg-btn.active, html.anim-off .pick-card.active,
+html.anim-off .m3-modetab.active { animation: none !important; }
+html.anim-off .status-flash { animation: none !important; }
 
 /* ---------- v6.5: m4ster signature cursor + live interactivity ----------
  * The m4ster fingerprint: a custom orb follows the mouse everywhere
@@ -2169,7 +2220,7 @@ body.dim-3d .fresh-lab { display: none; }
   background: #101116; color: #9ba0ab; font: 600 12.5px/1.2 inherit; cursor: pointer;
 }
 .m3-modetab .m3-ic { width: 24px; height: 24px; }
-.m3-modetab.active { background: #1e2126; color: #cdea8f; border-color: #3a3f2c;
+.m3-modetab.active { background: #1e2126; color: var(--violet-soft); border-color: color-mix(in srgb, var(--violet) 45%, transparent);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 4px 10px rgba(0,0,0,.4); }
 .m3-seg { display: flex; background: #101116; border: 1px solid #26272e; border-radius: 12px; padding: 3px; gap: 3px; }
 .m3-seg-btn {
@@ -2192,7 +2243,7 @@ body.dim-3d .fresh-lab { display: none; }
   border: 1.5px dashed #3a3c44; border-radius: 16px; background: #101116;
   padding: 18px 14px; text-align: center; cursor: pointer; position: relative;
 }
-.m3-drop:hover, .m3-drop.drag { border-color: #a6f750; background: #14160f; }
+.m3-drop:hover, .m3-drop.drag { border-color: var(--violet); background: #14160f; }
 .m3-drop-ic { width: 34px; height: 34px; color: #7d838f; margin-bottom: 6px; }
 .m3-drop-text strong { display: block; color: #e8eaf0; font-size: 13.5px; margin-bottom: 4px; }
 .m3-drop-text .dim { color: #777d89; font-size: 11.5px; line-height: 1.5; }
@@ -2200,14 +2251,14 @@ body.dim-3d .fresh-lab { display: none; }
 .m3-samples-label { font-size: 11.5px; color: #8a8f9a; display: block; margin-bottom: 6px; }
 .m3-samples-row { display: flex; gap: 8px; }
 .m3-sample { width: 62px; height: 62px; object-fit: contain; background: #101116; border: 1px solid #2c2e35; border-radius: 12px; cursor: pointer; padding: 4px; }
-.m3-sample:hover { border-color: #a6f750; }
+.m3-sample:hover { border-color: var(--violet); }
 .m3-bridge {
   padding: 10px 12px; border-radius: 12px; border: 1px solid #2c2e35; cursor: pointer;
   background: #17181d; color: #d7dae1; font: 600 12.5px/1.4 inherit; text-align: left;
 }
-.m3-bridge:hover { border-color: #a6f750; color: #eef1d6; }
+.m3-bridge:hover { border-color: var(--violet); color: #eef1d6; }
 .m3-mvrow { display: flex; align-items: center; justify-content: space-between; font-weight: 600; color: #dfe2e9; }
-.m3-free-tag { background: #a6f750; color: #131503; font: 800 9.5px/1 inherit; padding: 3px 6px; border-radius: 6px; vertical-align: 2px; margin-left: 4px; }
+.m3-free-tag { background: var(--violet); color: var(--on-accent); font: 800 9.5px/1 inherit; padding: 3px 6px; border-radius: 6px; vertical-align: 2px; margin-left: 4px; }
 .m3-switch {
   width: 46px; height: 26px; border-radius: 99px; border: 1px solid #3a3c44; cursor: pointer;
   background: #101116; position: relative; flex: none; padding: 0;
@@ -2218,24 +2269,24 @@ body.dim-3d .fresh-lab { display: none; }
   background: linear-gradient(180deg, #f4f5f7, #c9ccd4); transition: left .18s ease;
   box-shadow: 0 2px 5px rgba(0,0,0,.5);
 }
-.m3-switch.on, .m3-switch[aria-checked="true"] { background: #56751f; border-color: #79a832; }
+.m3-switch.on, .m3-switch[aria-checked="true"] { background: var(--violet-deep); border-color: var(--violet); }
 .m3-switch.on .knob, .m3-switch[aria-checked="true"] .knob { left: 22px; }
 .m3-hintcard {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   background: #101116; border: 1px solid #26272e; border-radius: 12px; padding: 10px 12px; color: #a7adb9; font-size: 12.5px;
 }
-.m3-hint-btn { border: 0; background: none; color: #a6f750; font: 700 12.5px/1 inherit; cursor: pointer; white-space: nowrap; }
+.m3-hint-btn { border: 0; background: none; color: var(--violet); font: 700 12.5px/1 inherit; cursor: pointer; white-space: nowrap; }
 .m3-token-details { border: 1px solid #26272e; border-radius: 12px; padding: 10px 12px; background: #101116; }
 .m3-token-details summary { cursor: pointer; color: #c9ccd4; font-size: 12.5px; font-weight: 600; }
 .m3-token { width: 100%; margin-top: 10px; padding: 10px; border-radius: 10px; border: 1px solid #33353d; background: #0c0d10; color: #eceef2; font: 13px/1.3 inherit; box-sizing: border-box; }
 .m3-token-details .ai-key-hint { color: #8a8f9a; font-size: 11.5px; line-height: 1.5; }
-.m3-token-details .ai-key-hint a { color: #a6f750; }
+.m3-token-details .ai-key-hint a { color: var(--violet); }
 .m3-costline { text-align: center; color: #8a8f9a; font-size: 12px; }
 .m3-generate {
   padding: 15px; border: 0; border-radius: 14px; cursor: pointer;
-  background: linear-gradient(180deg, #c6ff5e, #9be82e); color: #131503;
+  background: linear-gradient(180deg, var(--violet-soft), var(--violet) 55%, var(--violet-deep)); color: var(--on-accent);
   font: 800 16px/1 inherit; letter-spacing: .01em;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -3px 0 rgba(0,0,0,.18), 0 10px 22px rgba(155,232,46,.25);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -3px 0 rgba(0,0,0,.18), 0 10px 22px color-mix(in srgb, var(--violet) 25%, transparent);
 }
 .m3-generate:active { transform: translateY(1px); }
 .m3-generate:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
@@ -2245,7 +2296,7 @@ body.dim-3d .fresh-lab { display: none; }
 /* stage */
 .m3-stage { position: relative; overflow: hidden; display: flex; flex-direction: column; min-height: 480px; }
 .m3-empty { margin: auto; text-align: center; padding: 40px 30px; max-width: 640px; }
-.m3-empty h3 { color: #cdea8f; font-size: 24px; margin: 0 0 26px; font-weight: 700; }
+.m3-empty h3 { color: var(--violet-soft); font-size: 24px; margin: 0 0 26px; font-weight: 700; }
 .m3-steps { display: flex; align-items: flex-start; justify-content: center; gap: 10px; margin-bottom: 22px; }
 .m3-step { flex: 1; }
 .m3-step-art { font-size: 40px; margin-bottom: 8px; }
@@ -2265,13 +2316,13 @@ body.dim-3d .fresh-lab { display: none; }
 .m3-viewpreset select { background: #101116; color: #eceef2; border: 1px solid #2c2e35; border-radius: 8px; padding: 6px 8px; font: 600 13px/1 inherit; cursor: pointer; }
 .m3-modes { display: flex; background: #101116; border: 1px solid #26272e; border-radius: 10px; padding: 3px; gap: 3px; }
 .m3-mode { border: 0; background: transparent; color: #9ba0ab; font: 600 12.5px/1 inherit; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
-.m3-mode.active { background: #a6f750; color: #131503; box-shadow: 0 3px 8px rgba(0,0,0,.4); }
-.m3-modetab:hover, .m3-seg-btn:hover:not(.active), .m3-mode:hover:not(.active), .m3-switch:hover { border-color: rgba(166,247,80,.6); color: #eef1d6; }
+.m3-mode.active { background: var(--violet); color: var(--on-accent); box-shadow: 0 3px 8px rgba(0,0,0,.4); }
+.m3-modetab:hover, .m3-seg-btn:hover:not(.active), .m3-mode:hover:not(.active), .m3-switch:hover { border-color: color-mix(in srgb, var(--violet) 60%, transparent); color: #eef1d6; }
 .m3-tb-btn {
   border: 1px solid #2c2e35; background: #17181d; color: #d7dae1; cursor: pointer;
   font: 600 12.5px/1 inherit; padding: 9px 12px; border-radius: 10px;
 }
-.m3-tb-btn:hover { border-color: #a6f750; }
+.m3-tb-btn:hover { border-color: var(--violet); }
 .m3-stats {
   position: absolute; top: 64px; left: 14px; z-index: 5; min-width: 190px;
   background: rgba(13,13,16,.88); border: 1px solid #26272e; border-radius: 14px; padding: 10px 14px;
@@ -2299,7 +2350,7 @@ body.dim-3d .fresh-lab { display: none; }
 .m3-env-head { font: 700 15px/1.2 inherit; color: #f2f4f7; padding-bottom: 10px; border-bottom: 1px solid #26272e; margin-bottom: 6px; }
 .m3-env-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; color: #d7dae1; font-size: 13.5px; }
 .m3-env-row select { background: #101116; color: #eceef2; border: 1px solid #33353d; border-radius: 9px; padding: 8px; font: 13px/1 inherit; }
-.m3-env-row input[type="range"] { flex: 1; accent-color: #a6f750; }
+.m3-env-row input[type="range"] { flex: 1; accent-color: var(--violet); }
 .m3-docks { display: flex; justify-content: center; gap: 10px; padding: 12px; flex-wrap: wrap; }
 .m3-dock {
   display: flex; align-items: center; gap: 4px; background: rgba(13,13,16,.92);
@@ -2312,9 +2363,9 @@ body.dim-3d .fresh-lab { display: none; }
 }
 .m3-dock-btn:hover { background: #22232a; }
 .m3-download {
-  background: linear-gradient(180deg, #c6ff5e, #9be82e); color: #131503; text-decoration: none;
+  background: linear-gradient(180deg, var(--violet-soft), var(--violet) 55%, var(--violet-deep)); color: var(--on-accent); text-decoration: none;
   font: 800 14px/1 inherit; padding: 12px 18px; border-radius: 11px; white-space: nowrap;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 6px 14px rgba(155,232,46,.25);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 6px 14px color-mix(in srgb, var(--violet) 25%, transparent);
 }
 .m3-dl-size { font-weight: 600; opacity: .75; }
 .m3-reusebar {
@@ -2346,7 +2397,7 @@ body.dim-3d .fresh-lab { display: none; }
 .mp-trigger .mp-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mp-trigger .mp-chev { opacity: .55; font-size: 12px; }
 .mp-trigger .mp-chip, .mp-rchip {
-  background: #a6f750; color: #131503; font: 800 9.5px/1 inherit;
+  background: var(--violet); color: var(--on-accent); font: 800 9.5px/1 inherit;
   padding: 3px 6px; border-radius: 6px; letter-spacing: .03em; white-space: nowrap;
 }
 .mp-trigger.dark {
@@ -2355,7 +2406,7 @@ body.dim-3d .fresh-lab { display: none; }
   font-size: 13.5px;
 }
 .mp-trigger:hover { border-color: var(--violet); }
-.mp-trigger.dark:hover { border-color: rgba(166,247,80,.6); }
+.mp-trigger.dark:hover { border-color: color-mix(in srgb, var(--violet) 60%, transparent); }
 .mp-pop {
   position: fixed; z-index: 400; max-height: 62vh; display: flex; flex-direction: column;
   background: rgba(19,19,23,.98); border: 1px solid #2e2f36; border-radius: 18px;
@@ -2378,11 +2429,11 @@ body.dim-3d .fresh-lab { display: none; }
 }
 .mp-row:hover { background: #1e1f24; }
 .mp-row.sel { background: #22242b; }
-.mp-ic { width: 20px; text-align: center; color: #a6f750; font-size: 14px; padding-top: 1px; flex: none; }
+.mp-ic { width: 20px; text-align: center; color: var(--violet); font-size: 14px; padding-top: 1px; flex: none; }
 .mp-main { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .mp-rname { font: 600 13.5px/1.3 inherit; color: #f2f4f7; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .mp-rdesc { font: 400 12px/1.45 inherit; color: #9ba0ab; }
-.mp-check { color: #a6f750; font-weight: 800; flex: none; padding-top: 1px; }
+.mp-check { color: var(--violet); font-weight: 800; flex: none; padding-top: 1px; }
 .mp-health { display: inline-flex; align-items: center; gap: 5px; font: 600 11px/1 inherit; color: #9ba0ab; }
 .mp-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: #6b7280; }
 .mp-dot.ok { background: #4ade80; }
@@ -2403,9 +2454,9 @@ body.dim-3d .fresh-lab { display: none; }
   background: rgba(255,255,255,.5); font: 13.5px/1 inherit; min-width: 220px; color: inherit;
 }
 .assets-upload {
-  background: linear-gradient(180deg, #c6ff5e, #9be82e); color: #131503; border: 0; cursor: pointer;
+  background: linear-gradient(180deg, var(--violet-soft), var(--violet) 55%, var(--violet-deep)); color: var(--on-accent); border: 0; cursor: pointer;
   font: 800 13.5px/1 inherit; padding: 12px 18px; border-radius: 12px;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 6px 14px rgba(155,232,46,.22);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 6px 14px color-mix(in srgb, var(--violet) 22%, transparent);
 }
 .assets-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0 12px; flex-wrap: wrap; }
 .assets-filters { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -2413,8 +2464,8 @@ body.dim-3d .fresh-lab { display: none; }
   border: 1px solid var(--line, #d8d4e8); background: transparent; color: inherit; cursor: pointer;
   font: 600 13px/1 inherit; padding: 9px 14px; border-radius: 10px;
 }
-.assets-fbtn.active { background: #a6f750; border-color: #a6f750; color: #131503; }
-.assets-fbtn:hover { border-color: rgba(166,247,80,.6); }
+.assets-fbtn.active { background: var(--violet); border-color: var(--violet); color: var(--on-accent); }
+.assets-fbtn:hover { border-color: color-mix(in srgb, var(--violet) 60%, transparent); }
 .assets-upload:hover { filter: brightness(1.07); }
 .assets-batch { font: 600 13px/1 inherit; display: flex; gap: 7px; align-items: center; cursor: pointer; }
 .assets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
@@ -2423,7 +2474,7 @@ body.dim-3d .fresh-lab { display: none; }
   border: 1px solid #26272e; border-radius: 16px; overflow: hidden; cursor: pointer;
   box-shadow: 0 10px 22px rgba(10,8,40,.18);
 }
-.asset-card.picked { border-color: #a6f750; box-shadow: 0 0 0 2px #a6f750 inset, 0 10px 22px rgba(10,8,40,.18); }
+.asset-card.picked { border-color: var(--violet); box-shadow: 0 0 0 2px var(--violet) inset, 0 10px 22px rgba(10,8,40,.18); }
 .asset-thumb { width: 100%; height: 132px; object-fit: contain; display: block; padding: 10px; box-sizing: border-box; }
 .asset-cube {
   position: absolute; inset: 0 0 34px; display: flex; align-items: center; justify-content: center;
@@ -2440,7 +2491,7 @@ body.dim-3d .fresh-lab { display: none; }
 .asset-card:hover .asset-dl { opacity: 1; }
 .asset-check {
   position: absolute; top: 8px; left: 8px; width: 22px; height: 22px; border-radius: 7px;
-  border: 1.5px solid #a6f750; background: rgba(13,13,16,.85); color: #a6f750;
+  border: 1.5px solid var(--violet); background: rgba(13,13,16,.85); color: var(--violet);
   font: 800 13px/22px inherit; text-align: center;
 }
 .assets-empty { opacity: .6; font-size: 13.5px; padding: 18px 4px; }
@@ -2450,13 +2501,13 @@ body.dim-3d .fresh-lab { display: none; }
 .m3-canvas-wrap{position:relative}
 .m3-rdock{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px;z-index:6}
 .m3-rd-btn{width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.16);background:rgba(18,18,24,.78);color:#e8e8ee;font-size:16px;cursor:pointer;backdrop-filter:blur(6px);box-shadow:0 4px 14px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center}
-.m3-rd-btn:hover{border-color:rgba(166,247,80,.6)}
-.m3-rd-btn.active{background:#a6f750;color:#101408;border-color:#a6f750}
+.m3-rd-btn:hover{border-color:color-mix(in srgb, var(--violet) 60%, transparent)}
+.m3-rd-btn.active{background:var(--violet);color:var(--on-accent);border-color:var(--violet)}
 .m3-renderdock{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:flex;align-items:center;gap:9px;padding:8px 12px;border-radius:999px;background:rgba(14,14,20,.72);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(8px);z-index:6;box-shadow:0 10px 26px rgba(0,0,0,.5)}
 .m3-sphere{width:30px;height:30px;border-radius:50%;border:1px solid rgba(255,255,255,.22);cursor:pointer;padding:0;box-shadow:inset -3px -5px 8px rgba(0,0,0,.45),inset 3px 4px 6px rgba(255,255,255,.28),0 3px 8px rgba(0,0,0,.4)}
 .m3-sphere:hover{transform:translateY(-1px)}
-.m3-sphere.active{outline:2px solid #a6f750;outline-offset:2px}
-.sp-wire{background:radial-gradient(circle at 34% 30%,#2c2c34,#101014 70%);border-color:#a6f750}
+.m3-sphere.active{outline:2px solid var(--violet);outline-offset:2px}
+.sp-wire{background:radial-gradient(circle at 34% 30%,#2c2c34,#101014 70%);border-color:var(--violet)}
 .sp-clay{background:radial-gradient(circle at 34% 30%,#ffffff,#c9c9cf 72%)}
 .sp-metal{background:radial-gradient(circle at 34% 30%,#ffffff,#8f979f 55%,#565d63)}
 .sp-normal{background:conic-gradient(from 210deg,#7d7dff,#ff7de9,#7dffb2,#7de9ff,#7d7dff)}
@@ -2470,27 +2521,27 @@ body.dim-3d .fresh-lab { display: none; }
 .m3-helpop[hidden]{display:none}
 .m3-exppop{width:300px;max-width:92vw}
 .m3-exppop input[type="text"]{background:#17171f;border:1px solid rgba(255,255,255,.16);border-radius:8px;color:#eeeeee;padding:6px 9px;font-size:13px;width:150px}
-.m3-exp-go{margin-top:10px;width:100%;background:#a6f750;color:#101408;border:none;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;font-size:14px;box-shadow:0 6px 18px rgba(166,247,80,.25),inset 0 1px 0 rgba(255,255,255,.5)}
+.m3-exp-go{margin-top:10px;width:100%;background:linear-gradient(180deg, var(--violet-soft), var(--violet) 55%, var(--violet-deep));color:var(--on-accent);border:none;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;font-size:14px;box-shadow:0 6px 18px color-mix(in srgb, var(--violet) 25%, transparent),inset 0 1px 0 rgba(255,255,255,.5)}
 .m3-bridgepop{width:350px;max-width:94vw}
 .m3-bridge-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.07)}
 .m3-bridge-row strong{flex:0 0 84px;font-size:13px;color:#f0f0f4}
 .m3-bridge-row span{flex:1;font-size:11.5px;color:#a9a9b5;line-height:1.35}
-.m3-bridge-dl{flex:0 0 auto;background:#23232e;border:1px solid rgba(255,255,255,.16);color:#c9f79a;border-radius:8px;padding:5px 9px;font-size:12px;text-decoration:none}
-.m3-bridge-guide{display:block;width:100%;margin-top:10px;background:#23232e;border:1px solid rgba(255,255,255,.16);color:#c9f79a;border-radius:8px;padding:8px 9px;font-size:12.5px;font-weight:600;cursor:pointer}
-.m3-bridge-guide:hover{border-color:#a6f750;color:#eef1d6}
+.m3-bridge-dl{flex:0 0 auto;background:#23232e;border:1px solid rgba(255,255,255,.16);color:var(--violet-soft);border-radius:8px;padding:5px 9px;font-size:12px;text-decoration:none}
+.m3-bridge-guide{display:block;width:100%;margin-top:10px;background:#23232e;border:1px solid rgba(255,255,255,.16);color:var(--violet-soft);border-radius:8px;padding:8px 9px;font-size:12.5px;font-weight:600;cursor:pointer}
+.m3-bridge-guide:hover{border-color:var(--violet);color:#eef1d6}
 .m3-bridge-note{font-size:11.5px;color:#8b8b98;margin-top:9px;line-height:1.45}
-.m3-drop-genlink{display:block;margin:10px auto 2px;background:none;border:none;color:#a6f750;font-size:13px;font-weight:600;cursor:pointer}
+.m3-drop-genlink{display:block;margin:10px auto 2px;background:none;border:none;color:var(--violet);font-size:13px;font-weight:600;cursor:pointer}
 .m3-drop-genlink:hover{text-decoration:underline}
 
 /* ===== P5: Animate panel ===== */
 .lab-animate{width:100%;max-width:1960px;margin:26px auto;padding:24px;border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));border:1px solid rgba(255,255,255,.09);box-shadow:0 24px 50px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.07)}
 .lab-animate[hidden]{display:none}
 .la-head h2{margin:0 0 4px;font-size:24px}
-.la-rigbanner{display:flex;align-items:center;gap:16px;margin:16px 0;padding:16px 18px;border-radius:14px;background:linear-gradient(120deg,rgba(166,247,80,.14),rgba(124,77,255,.14));border:1px solid rgba(166,247,80,.35);box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+.la-rigbanner{display:flex;align-items:center;gap:16px;margin:16px 0;padding:16px 18px;border-radius:14px;background:linear-gradient(120deg,color-mix(in srgb, var(--violet) 14%, transparent),rgba(124,77,255,.14));border:1px solid color-mix(in srgb, var(--violet) 35%, transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
 .la-rig-art{font-size:30px}
 .la-rig-text{flex:1;display:flex;flex-direction:column;gap:2px}
 .la-rig-text span{font-size:13px;color:#b9b9c4}
-.la-rig-btn{background:#a6f750;color:#101408;border:none;border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(166,247,80,.25),inset 0 1px 0 rgba(255,255,255,.5)}
+.la-rig-btn{background:linear-gradient(180deg, var(--violet-soft), var(--violet) 55%, var(--violet-deep));color:var(--on-accent);border:none;border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px color-mix(in srgb, var(--violet) 25%, transparent),inset 0 1px 0 rgba(255,255,255,.5)}
 .la-search{width:100%;padding:11px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:#14141b;color:#eee;font-size:14px;margin:4px 0 6px}
 .la-lib-head{margin:20px 0 10px;font-size:16px}
 .la-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -2499,20 +2550,20 @@ body.dim-3d .fresh-lab { display: none; }
 .la-card p{font-size:13px;color:#a9a9b5;line-height:1.45}
 .la-t2m-row{display:flex;gap:8px;margin-top:10px}
 .la-t2m-row input{flex:1;padding:9px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:#0f0f14;color:#eee;font-size:13px}
-.la-t2m-row button,.la-vid-btn{background:#23232e;border:1px solid rgba(255,255,255,.16);color:#c9f79a;border-radius:9px;padding:9px 14px;cursor:pointer;font-weight:600}
+.la-t2m-row button,.la-vid-btn{background:#23232e;border:1px solid rgba(255,255,255,.16);color:var(--violet-soft);border-radius:9px;padding:9px 14px;cursor:pointer;font-weight:600}
 .la-rig-btn:hover{filter:brightness(1.07)}
-.la-t2m-row button:hover,.la-vid-btn:hover{border-color:rgba(166,247,80,.6)}
+.la-t2m-row button:hover,.la-vid-btn:hover{border-color:color-mix(in srgb, var(--violet) 60%, transparent)}
 .la-note{font-size:12.5px;color:#9fe870;min-height:16px;margin-top:8px}
 .la-vid{width:100%;margin-top:10px;border-radius:10px}
 .la-mine{display:flex;flex-wrap:wrap;gap:8px}
-.la-mine-chip{display:inline-flex;align-items:center;gap:8px;background:#1b1b24;border:1px solid rgba(166,247,80,.4);color:#e8e8ee;border-radius:999px;padding:6px 8px 6px 13px;font-size:12.5px}
-.la-mine-chip button{background:#a6f750;border:none;color:#101408;border-radius:999px;padding:3px 10px;font-weight:700;cursor:pointer;font-size:12px}
+.la-mine-chip{display:inline-flex;align-items:center;gap:8px;background:#1b1b24;border:1px solid color-mix(in srgb, var(--violet) 40%, transparent);color:#e8e8ee;border-radius:999px;padding:6px 8px 6px 13px;font-size:12.5px}
+.la-mine-chip button{background:var(--violet);border:none;color:var(--on-accent);border-radius:999px;padding:3px 10px;font-weight:700;cursor:pointer;font-size:12px}
 .la-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .la-preset{padding:14px 12px;border-radius:12px;background:#14141b;border:1px solid rgba(255,255,255,.09);color:#e8e8ee;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
 .la-preset strong{font-size:13.5px}
 .la-preset span{font-size:11px;color:#8b8b98}
-.la-preset:hover{border-color:rgba(166,247,80,.55)}
-.la-preset.active{border-color:#a6f750;background:rgba(166,247,80,.1)}
+.la-preset:hover{border-color:color-mix(in srgb, var(--violet) 55%, transparent)}
+.la-preset.active{border-color:var(--violet);background:color-mix(in srgb, var(--violet) 10%, transparent)}
 
 /* ===== P6: Print & Post-Processing ===== */
 .lab-print[hidden]{display:none}
@@ -2521,14 +2572,14 @@ body.dim-3d .fresh-lab { display: none; }
 .pp-stats span{font-size:11px;color:#8b8b98}
 .pp-stats strong{font-size:15px;color:#f0f0f4}
 .pp-btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.pp-btnrow button,.pp-card>button{background:#23232e;border:1px solid rgba(255,255,255,.16);color:#c9f79a;border-radius:9px;padding:8px 13px;cursor:pointer;font-weight:600;font-size:13px}
-.pp-btnrow button:hover,.pp-card>button:hover{border-color:rgba(166,247,80,.6)}
+.pp-btnrow button,.pp-card>button{background:#23232e;border:1px solid rgba(255,255,255,.16);color:var(--violet-soft);border-radius:9px;padding:8px 13px;cursor:pointer;font-weight:600;font-size:13px}
+.pp-btnrow button:hover,.pp-card>button:hover{border-color:color-mix(in srgb, var(--violet) 60%, transparent)}
 .pp-palette{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .pp-swatch{width:52px;text-align:center}
 .pp-swatch i{display:block;height:38px;border-radius:9px;border:1px solid rgba(255,255,255,.2)}
 .pp-swatch span{font-size:10px;color:#a9a9b5;display:block;margin-top:4px;line-height:1.3}
 .pp-quant{width:100%;border-radius:10px;margin-top:12px;border:1px solid rgba(255,255,255,.12)}
-.pp-new{background:#a6f750;color:#101408;font-size:10px;font-weight:800;border-radius:5px;padding:2px 6px;vertical-align:2px}
+.pp-new{background:var(--violet);color:var(--on-accent);font-size:10px;font-weight:800;border-radius:5px;padding:2px 6px;vertical-align:2px}
 
 /* ===== P7: chain box, skills, chips, compare, FAQ ===== */
 .m3-chainbox{margin-top:14px;padding:13px 14px;border-radius:13px;background:rgba(124,77,255,.1);border:1px solid rgba(124,77,255,.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
@@ -2539,18 +2590,18 @@ body.dim-3d .fresh-lab { display: none; }
 .m3-rail.text-mode .m3-imgonly{display:none!important}
 .m3-chain-row{display:flex;gap:8px}
 .m3-chain-row input{flex:1;min-width:0;padding:9px 11px;border-radius:9px;border:1px solid rgba(255,255,255,.16);background:#12121a;color:#eee;font-size:13px}
-.m3-chain-row button{background:#a6f750;color:#101408;border:none;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer}
+.m3-chain-row button{background:var(--violet);color:var(--on-accent);border:none;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer}
 .m3-chain-status{font-size:12px;color:#9fe870;min-height:15px}
 .lab-skills[hidden]{display:none}
 .chiprow{display:flex;gap:8px;overflow-x:auto;padding:6px 2px 12px;scrollbar-width:thin}
 .agent-chip{flex:0 0 auto;background:#1b1b24;border:1px solid rgba(255,255,255,.15);color:#e8e8ee;border-radius:999px;padding:8px 15px;font-size:13px;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.09)}
-.agent-chip:hover{border-color:rgba(166,247,80,.6);color:#c9f79a}
+.agent-chip:hover{border-color:color-mix(in srgb, var(--violet) 60%, transparent);color:var(--violet-soft)}
 .sk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 .sk-card{padding:16px;border-radius:14px;background:#14141b;border:1px solid rgba(255,255,255,.09);box-shadow:inset 0 1px 0 rgba(255,255,255,.06);display:flex;flex-direction:column;gap:6px}
 .sk-card .sk-art{font-size:26px}
 .sk-card strong{font-size:14.5px}
 .sk-card p{font-size:12.5px;color:#a9a9b5;line-height:1.45;flex:1}
-.sk-card button{background:#a6f750;color:#101408;border:none;border-radius:9px;padding:9px 13px;font-weight:700;cursor:pointer;align-self:flex-start}
+.sk-card button{background:var(--violet);color:var(--on-accent);border:none;border-radius:9px;padding:9px 13px;font-weight:700;cursor:pointer;align-self:flex-start}
 .info-sec{max-width:1180px;margin:30px auto;padding:6px 20px}
 /* wide desktop: comparison + FAQ share one row instead of stacking */
 .info-duo { width: 100%; max-width: 1720px; margin: 0 auto; padding: 0 28px; display: grid;
@@ -2563,7 +2614,7 @@ body.dim-3d .fresh-lab { display: none; }
 .cmp th{background:#17171f;color:#f0f0f4}
 .cmp td{color:#c6c6cf;background:rgba(255,255,255,.02)}
 .cmp td:first-child{color:#8b8b98}
-.cmp .cmp-us{background:rgba(166,247,80,.08);color:#e6ffd0;font-weight:600}
+.cmp .cmp-us{background:color-mix(in srgb, var(--violet) 8%, transparent);color:var(--violet-soft);font-weight:600}
 .faq{border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:13px 17px;margin-top:10px;background:rgba(255,255,255,.025)}
 .faq summary{cursor:pointer;font-weight:600;font-size:14.5px}
 .faq p{font-size:13.5px;color:#b9b9c4;line-height:1.55;margin:9px 0 3px}
@@ -2739,3 +2790,338 @@ body:not(.dim-3d) #labSkills { display: none !important; }
 }
 #m3BridgePop { width: 262px; }
 .panel, .gcard, .cat-card, .tool-card { background: rgba(21,18,35,.78); }
+
+
+/* ================= v8.12 — liquid-glass unification =================
+ * One frosted material (the tokens above) across BOTH sides, in each
+ * theme's own hues. This section re-declares ONLY background /
+ * border-color / box-shadow / backdrop-filter for the inventoried
+ * surfaces — layout, padding and radius everywhere are untouched.
+ * Top-level surfaces blur; a surface nested inside another glass
+ * surface goes flat (no double blur stacking); popovers and sheets
+ * take the strong mix. Canvas and viewer containers NEVER blur and
+ * never wear a milky layer — they stay flat and near-solid (see the
+ * guardrail group). It sits after the 2026-10-21 frosted block and
+ * supersedes it: same recipe, now token-driven and theme-aware. */
+
+/* top bar: the bespoke frosted rule, re-expressed via the tokens */
+.topbar {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+}
+
+/* glass (blur) — top-level surfaces on the page background */
+.panel, .card, .tool-card, .cat-card, .gcard, .fresh-card,
+.lab3d-card, .viz-panel, .assets-sec, .foot, .mobile-bar {
+  background: var(--glass-bg);
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+/* glass (blur), dark base — the 3D rail + the dark lab sections */
+.m3-rail, .lab-animate {
+  background: var(--glass-bg-dark);
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+/* glass-flat — surfaces nested inside another glass surface */
+.ctl-group, .export-box, .frame-card, .piece-card, .stepper li,
+.seg-btn, .tab, .preset-chip, .pl-swatch, .pl-variant, .m3-card,
+.tool-back, .save-btn, .faq {
+  background: var(--glass-bg);
+  border-color: var(--glass-edge);
+}
+.pill { background: var(--glass-bg); }
+/* glass-flat, dark base — the 3D rail's sub-panels, chips and cards */
+.m3-modetab, .m3-seg, .m3-tip, .m3-drop, .m3-hintcard,
+.m3-token-details, .m3-sample, .m3-bridge, .m3-chainbox, .m3-tb-btn,
+.m3-modes, .mp-trigger.dark, .m3-model-select, .asset-card,
+.la-card, .sk-card, .la-preset, .pp-stats div, .agent-chip,
+.la-mine-chip {
+  background: var(--glass-bg-dark);
+  border-color: var(--glass-edge);
+}
+/* retry bar: flat glass inside the stage panel; the amber edge stays —
+ * it is the recovery signal, not decoration */
+.retry-bar { background: var(--glass-bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* glass-strong — popovers, sheets and floating chrome */
+.customize {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.mp-pop, .m3-envpop, .m3-helpop {
+  background: var(--glass-bg-dark-strong);
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.mml-toolbar {
+  background: var(--glass-bg-dark-strong);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.m3-dock, .m3-stats {
+  background: var(--glass-bg-dark);
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+/* viewer overlay chips keep their own lighter blur, token colours */
+.m3-renderdock {
+  background: var(--glass-bg-dark);
+  border-color: var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.m3-rd-btn {
+  background: var(--glass-bg-dark);
+  border-color: var(--glass-edge);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* canvas guardrails: stage / viewer / tool-canvas containers stay
+ * flat and near-solid — no backdrop-filter, no translucent layer */
+.canvas-wrap, .m3-canvas-wrap, .draglab-box, .cutout-box,
+.upscale-box, .atlas-box, .normalmap-box, .tiler-box, .palette-box,
+.gif-box, .px-fig {
+  border-color: var(--glass-edge);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.m3-stage {
+  background: var(--glass-bg-dark-strong);
+  border-color: var(--glass-edge);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* ---------- the 2D ⇄ 3D switch: a sliding glass toggle ----------
+ * Same ids, same handlers, same .active state — only the presentation
+ * changed. One glass-strong thumb slides behind the active label on
+ * the spring curve; body.dim-3d (set by the existing flip logic)
+ * drives the thumb, so the control reads identically on both sides
+ * and never moves. The track itself squashes on press. */
+.dim-flip {
+  position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  transition: transform .18s cubic-bezier(.34, 1.56, .64, 1);
+}
+.dim-flip:active { transform: scale(.97); }
+.flip-thumb {
+  position: absolute; top: 4px; bottom: 4px; left: 4px;
+  width: calc(50% - 6px); border-radius: 999px;
+  background: linear-gradient(180deg, var(--violet-soft) 0%, var(--violet) 48%, var(--violet-deep) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), inset 0 -2px 4px rgba(0, 0, 0, .28),
+              0 4px 12px color-mix(in srgb, var(--violet) 35%, transparent);
+  transition: transform .38s cubic-bezier(.34, 1.56, .64, 1);
+}
+body.dim-3d .flip-thumb { transform: translateX(calc(100% + 4px)); }
+.flip-btn { position: relative; z-index: 1; background: transparent; box-shadow: none; }
+.flip-btn.active {
+  background: transparent; box-shadow: none; transform: none;
+  color: var(--on-accent); text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+}
+
+/* ---------- primary buttons: the shared lip ----------
+ * A light top edge + a subtle vertical gradient over the accent fill
+ * + the shared soft shadow. Hues and sizes are unchanged — the
+ * formerly lime primaries already wear the theme gradient above. */
+.generate {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), inset 0 -3px 6px rgba(0, 0, 0, .22),
+              0 6px 16px rgba(0, 0, 0, .28), 0 10px 26px color-mix(in srgb, var(--violet) 35%, transparent);
+}
+.wiz-next, .m3-generate, .m3-download, .assets-upload, .m3-exp-go,
+.la-rig-btn, .m3-chain-row button, .sk-card button, .la-mine-chip button {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 55%),
+              linear-gradient(180deg, var(--violet-soft), var(--violet) 55%, var(--violet-deep));
+  color: var(--on-accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), inset 0 -3px 6px rgba(0, 0, 0, .18),
+              0 8px 22px rgba(0, 0, 0, .28);
+}
+
+/* ---------- icon buttons: glass fill + edge ---------- */
+.icon-btn, .gal-arrow, .stepper button, .frame-card .mv button {
+  background: var(--glass-bg);
+  border-color: var(--glass-edge);
+}
+.mp-x {
+  background: var(--glass-bg-dark);
+  border: 1px solid var(--glass-edge);
+  border-radius: 8px;
+}
+.asset-dl { background: var(--glass-bg-dark-strong); border-color: var(--glass-edge); }
+.wiz-dot { background: var(--glass-bg); }
+.mml-fab {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.mml-toolbar button { background: var(--glass-bg-dark); border-color: var(--glass-edge); color: #e8e8ee; }
+.mml-toolbar button.primary { background: var(--glass-bg-dark-strong); }
+.mml-pin, .mml-del, .mml-rotate-btn {
+  background: var(--glass-bg-dark);
+  border: 1px solid var(--glass-edge);
+  border-radius: 6px;
+}
+
+/* ---------- sliders: glass track, glass-strong thumb ----------
+ * Every input[type=range] on the site (tool sliders, the Customize
+ * sliders, the environment strength, the compare slider). No slider
+ * paints its own fill (values are read by JS only), so the track
+ * stays neutral glass; the thumb grows on press via a transition,
+ * which keeps it live with Animations OFF. */
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  height: 22px; background: transparent; cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
+  background: var(--glass-bg); border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .25);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; margin-top: -7px; border-radius: 50%;
+  background: var(--glass-bg-strong); border: 1px solid var(--glass-edge);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .25);
+  transition: transform .18s cubic-bezier(.34, 1.56, .64, 1);
+}
+input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.18); }
+input[type="range"]::-moz-range-track {
+  height: 6px; border-radius: 999px;
+  background: var(--glass-bg); border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .25);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--glass-bg-strong); border: 1px solid var(--glass-edge);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .25);
+  transition: transform .18s cubic-bezier(.34, 1.56, .64, 1);
+}
+input[type="range"]:active::-moz-range-thumb { transform: scale(1.18); }
+/* sliders living on dark glass (the environment popover) go dark too */
+.m3-envpop input[type="range"]::-webkit-slider-runnable-track { background: var(--glass-bg-dark); }
+.m3-envpop input[type="range"]::-moz-range-track { background: var(--glass-bg-dark); }
+.m3-envpop input[type="range"]::-webkit-slider-thumb { background: var(--glass-bg-dark-strong); }
+.m3-envpop input[type="range"]::-moz-range-thumb { background: var(--glass-bg-dark-strong); }
+
+/* ---------- press feedback: squash on the spring curve ----------
+ * Transitions, not keyframes — deliberately live with Animations
+ * OFF. Where a selector already transitioned other properties, the
+ * transform term joins its list (same properties, spring timing);
+ * nothing else about its motion changes. While pressed, the squash
+ * supersedes the hover lift. Transform-positioned elements are NOT
+ * in these lists: .m3-renderdock / .mml-toolbar / .m3-rdock /
+ * .m3-helpop centre themselves with translate transforms, the flip
+ * thumb's transform is its slide, and .generate / .save-btn /
+ * .tool-back / .m3-generate / .flip-btn already carry their own
+ * press choreography. */
+.tab, .seg-btn, .frame-card, .btn-ghost, .export-box .btn, .gh-link,
+.key, .icon-btn, .swatch, .gopen {
+  transition: background-color .35s ease, border-color .35s ease, color .35s ease,
+              box-shadow .25s ease, transform .18s cubic-bezier(.34, 1.56, .64, 1);
+}
+.mini-btn {
+  transition: background-color .35s ease, border-color .35s ease, color .35s ease,
+              transform .18s cubic-bezier(.34, 1.56, .64, 1);
+}
+.tool-card {
+  transition: transform .18s cubic-bezier(.34, 1.56, .64, 1),
+              border-color .15s ease, box-shadow .15s ease;
+}
+.pick-card {
+  transition: transform .18s cubic-bezier(.34, 1.56, .64, 1),
+              border-color .15s ease, box-shadow .15s ease,
+              background-color .15s ease, color .15s ease;
+}
+.cat-card, .gcard {
+  transition: background-color .35s ease, border-color .35s ease, color .35s ease,
+              box-shadow .25s ease, transform .18s cubic-bezier(.34, 1.56, .64, 1);
+}
+.piece-card, .asset-card, .la-preset, .mp-row, .m3-modetab, .m3-bridge, .mp-trigger {
+  transition: transform .18s cubic-bezier(.34, 1.56, .64, 1),
+              border-color .15s ease, background-color .15s ease,
+              color .15s ease, box-shadow .15s ease;
+}
+.asset-dl {
+  transition: opacity .15s ease, transform .18s cubic-bezier(.34, 1.56, .64, 1),
+              border-color .15s ease;
+}
+.m3-seg-btn, .m3-mode, .m3-tb-btn, .m3-dock-btn, .m3-rd-btn, .m3-sample,
+.mp-x, .mp-star, .stepper button, .frame-card .mv button,
+.mml-toolbar button, .foot-reset, .wiz-dot, .m3-sphere, .assets-fbtn,
+.preset-chip, .agent-chip, .pl-swatch, .pl-variant, .gal-arrow {
+  transition: transform .18s cubic-bezier(.34, 1.56, .64, 1),
+              border-color .15s ease, background-color .15s ease,
+              color .15s ease, box-shadow .15s ease;
+}
+/* buttons + pills squash to .93 */
+.icon-btn:active, .mini-btn:active, .btn-ghost:active,
+.export-box .btn:active, .gh-link:active, .foot-reset:active,
+.tab:active, .seg-btn:active, .m3-seg-btn:active, .m3-mode:active,
+.m3-tb-btn:active, .m3-dock-btn:active, .m3-rd-btn:active,
+.m3-sphere:active, .m3-sample:active, .assets-fbtn:active,
+.mp-x:active, .mp-star:active, .preset-chip:active, .agent-chip:active,
+.pl-swatch:active, .pl-variant:active, .stepper button:active,
+.frame-card .mv button:active, .mml-toolbar button:active,
+.gal-arrow:active, .wiz-dot:active, .swatch:active, .key:active,
+.gopen:active {
+  transform: scale(.93);
+}
+/* cards squash to .97 */
+.tool-card:active, .pick-card:active, .cat-card:active, .gcard:active,
+.frame-card:active, .piece-card:active, .asset-card:active,
+.la-preset:active, .mp-row:active, .m3-modetab:active,
+.m3-bridge:active, .mp-trigger:active {
+  transform: scale(.97);
+}
+
+/* ---------- selection pop (decorative: gated under anim-off) ----------
+ * Fires when .active is gained. Armed only after the first real
+ * interaction (body.glass-live, set by JS) — several controls are
+ * default-active, and nothing may pop on page load. */
+@keyframes pickPop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.09); }
+  100% { transform: scale(1); }
+}
+body.glass-live .seg-btn.active,
+body.glass-live .pick-card.active,
+body.glass-live .m3-modetab.active {
+  animation: pickPop .28s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* ---------- toggle knobs ride the same spring ---------- */
+.switch .knob { transition: left .28s cubic-bezier(.34, 1.56, .64, 1), background-color .2s ease; }
+.m3-switch .knob { transition: left .28s cubic-bezier(.34, 1.56, .64, 1); }
+
+/* ---------- status flash (decorative: gated under anim-off) ----------
+ * A one-shot accent glow on the status line, fired by pulseStatus()
+ * from the two primary status paths (stageMsg + the 3D say()).
+ * Text-shadow only, so error / warning colours are never overridden. */
+@keyframes statusFlash {
+  0% { text-shadow: 0 0 16px var(--violet-soft), 0 0 3px var(--violet-soft); }
+  100% { text-shadow: 0 0 0 transparent; }
+}
+.status-flash { animation: statusFlash .35s ease; }

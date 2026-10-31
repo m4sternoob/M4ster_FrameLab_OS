@@ -97,11 +97,22 @@ function resetSteps() {
   document.querySelectorAll("#stepper li").forEach(li => li.classList.remove("active", "done", "error", "warn"));
 }
 
+/* v8.12: one-shot accent glow on a status line (decorative — the
+ * .status-flash keyframe rests under html.anim-off). Restart-safe:
+ * removing the class + forcing reflow replays it on rapid updates. */
+function pulseStatus(el) {
+  if (!el) return;
+  el.classList.remove("status-flash");
+  void el.offsetWidth;
+  el.classList.add("status-flash");
+}
+
 function stageMsg(msg, kind) {
   const el = $("#stageMsg");
   el.textContent = msg;
   el.classList.toggle("err", kind === true || kind === "err");
   el.classList.toggle("warn", kind === "warn");
+  pulseStatus(el);
 }
 
 function showStage(canvas, msg) {
@@ -9068,6 +9079,27 @@ document.addEventListener("DOMContentLoaded", init);
     applyRGB();
   }
 
+  /* ---------- v8.12: Frost transparency (one knob, whole glass system) ----------
+   * --frost is the panel-mix percentage behind every glass token, so
+   * setting it on <html> re-tints all glass surfaces live. The head
+   * script applies the saved value pre-paint; this keeps the slider
+   * in sync and persists on change, like the sibling prefs. */
+  var LS_FROST = "m4ster.frost";
+  function readFrost() {
+    var v = parseFloat(lsGet(LS_FROST));
+    return isFinite(v) ? Math.min(92, Math.max(45, v)) : 74;
+  }
+  function applyFrost() {
+    var v = readFrost();
+    document.documentElement.style.setProperty("--frost", String(v));
+    var rg = document.getElementById("frostRange");
+    if (rg) rg.value = String(v);
+  }
+  function saveFrost(v) {
+    lsSet(LS_FROST, String(Math.min(92, Math.max(45, v))));
+    applyFrost();
+  }
+
   function initCustomize() {
     var btn = document.getElementById("customizeBtn");
     var pop = document.getElementById("customizePop");
@@ -9127,6 +9159,9 @@ document.addEventListener("DOMContentLoaded", init);
     document.getElementById("auraIntensity").addEventListener("input", function (e) {
       saveAura({ intensity: +e.target.value });
     });
+    document.getElementById("frostRange").addEventListener("input", function (e) {
+      saveFrost(+e.target.value);
+    });
     document.getElementById("rgbToggle").addEventListener("click", function () {
       saveRGB({ enabled: !readRGB().enabled });
     });
@@ -9145,6 +9180,7 @@ document.addEventListener("DOMContentLoaded", init);
       try {
         lsSet(LS_THEME, document.documentElement.getAttribute("data-theme") || "forest");
         lsSet("m4ster.animations", animationsOn() ? "1" : "0");
+        lsSet(LS_FROST, String(readFrost()));
         saveAura(readAura());
         saveRGB(readRGB());
       } catch (e) {}
@@ -9158,6 +9194,7 @@ document.addEventListener("DOMContentLoaded", init);
     applyTheme(lsGet(LS_THEME) || "forest", false);
     applyAura();
     applyRGB();
+    applyFrost();
   }
 
   if (document.readyState === "loading") {
@@ -10084,6 +10121,14 @@ function wireFlip() {
   if (saved === "3d") applyDim("3d");
 }
 
+/* v8.12: the pick pop arms only after the first real interaction —
+ * several controls are default-active, and nothing may pop on load */
+(function () {
+  var arm = function () { document.body.classList.add("glass-live"); };
+  window.addEventListener("pointerdown", arm, { once: true });
+  window.addEventListener("keydown", arm, { once: true });
+})();
+
 /* ============ 3D LAB — image → mesh on free HF Spaces (test build) ========
  * The providers were proven end-to-end in the provider lab
  * (~/workspace/framelab-provider-lab/results-3d-round1.json + round2):
@@ -10513,6 +10558,7 @@ function wire3DLab() {
   function say(t, isErr) {
     status.textContent = t;
     status.classList.toggle("err", !!isErr);
+    pulseStatus(status);
   }
   window.M3_SET_SOURCE = function (f) { setFile(f); };
   function setFile(f) {
@@ -10642,7 +10688,7 @@ function wire3DLab() {
     const gizmoCam = new THREE.PerspectiveCamera(38, 1, 0.1, 20);
     m3three = { THREE, GLTFLoader, scene, camera, renderer, controls, key,
       clayMat: new THREE.MeshStandardMaterial({ color: 0xb9b9be, roughness: 0.85, metalness: 0.0 }),
-      wireMat: new THREE.MeshBasicMaterial({ color: 0xa6f750, wireframe: true }),
+      wireMat: new THREE.MeshBasicMaterial({ color: new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue("--violet").trim() || "#a78bfa"), wireframe: true }),
       normalMat: new THREE.MeshNormalMaterial(),
       metalMat: new THREE.MeshStandardMaterial({ color: 0xdfe3e8, metalness: 1.0, roughness: 0.32 }),
       greyMat: new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.15, roughness: 0.55 }),
