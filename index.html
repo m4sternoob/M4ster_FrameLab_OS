@@ -72,6 +72,13 @@
   </div>
 </header>
 
+<!-- v8.13: offline state — shown/hidden live by the online/offline
+     listeners in app.js; the app shell and on-device tools keep working -->
+<div id="offlineBar" class="offline-bar" role="status" hidden>
+  <span class="offline-dot" aria-hidden="true"></span>
+  <span>You&rsquo;re offline &mdash; the tools already loaded on this device keep working. AI generation needs a connection.</span>
+</div>
+
 <!-- ============ v6 HERO: prompt-first (Seele pattern, zero login) ============ -->
 <section class="hero page-section" id="hero" data-mml="hero">
   <div class="hero-inner">
@@ -309,6 +316,7 @@
     <div class="canvas-wrap">
       <canvas id="stage"></canvas>
       <div id="stageMsg" class="stage-msg">Pick a category, describe your sprite, hit generate.</div>
+      <div id="stageSkel" class="skel skel-stage" hidden aria-hidden="true"></div>
     </div>
 
     <div id="pixelSide" class="pixel-side" hidden>
@@ -344,7 +352,9 @@
         </div>
       </div>
       <p class="cutout-hint">Your photo never leaves your device — the AI runs right here.</p>
+      <div class="up-progress co-progress" id="coProgressRow" hidden><div class="up-progress-bar" id="coProgressBar"></div></div>
       <p class="cutout-readout dim" id="coReadout" role="status" aria-live="polite"></p>
+      <button type="button" class="btn-ghost retry-dl" id="coRetry" hidden>Retry download</button>
     </section>
 
     <section id="upscale" class="upscale-side" hidden aria-label="Upscale Lab — AI image enlargement">
@@ -363,6 +373,7 @@
       <div class="up-progress" id="upProgressRow" hidden><div class="up-progress-bar" id="upProgressBar"></div></div>
       <p class="upscale-hint">Drag the slider to compare — your image never leaves your device.</p>
       <p class="upscale-readout dim" id="upReadout" role="status" aria-live="polite"></p>
+      <button type="button" class="btn-ghost retry-dl" id="upRetry" hidden>Retry download</button>
     </section>
 
     <section id="atlas" class="atlas-side" hidden aria-label="Atlas Packer — pack loose sprites into one sheet">
@@ -580,10 +591,12 @@
       <div class="m3-costline" id="m3CostLine">Free &middot; no signup &middot; no keys</div>
       <button id="m3Go" class="m3-generate" type="button" disabled>&#10024; Generate</button>
       <div id="m3Status" class="m3-status" role="status" aria-live="polite">Pick an image to start — it's free.</div>
+      <button id="m3TryAuto" class="btn-ghost" type="button" hidden>Try AUTO (all providers)</button>
     </aside>
 
     <!-- ===== stage: Meshy viewer layout ===== -->
     <div class="m3-stage" id="m3Stage">
+      <div id="m3Skel" class="skel skel-m3" hidden aria-hidden="true"></div>
       <div class="m3-empty" id="m3StageEmpty">
         <h3>Ready for a new 3D model?</h3>
         <div class="m3-steps">
@@ -854,6 +867,10 @@
   </div>
   <div class="assets-grid" id="assetsGrid"></div>
   <p class="assets-empty" id="assetsEmpty">Nothing here yet — generate a sprite or a mesh and it shows up here.</p>
+  <div class="assets-empty-actions" id="assetsEmptyActions" hidden>
+    <button type="button" class="btn-ghost" id="assetsGoSprite">Generate your first sprite</button>
+    <button type="button" class="btn-ghost" id="assetsShowAll" hidden>Show all</button>
+  </div>
   <div class="assets-foot" id="assetsFoot" hidden>
     <span id="assetsSelCount">0 selected</span>
     <button id="assetsDlSel" class="assets-upload" type="button">&#11015; Download selected</button>

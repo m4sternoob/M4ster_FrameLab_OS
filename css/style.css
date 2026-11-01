@@ -394,7 +394,7 @@ textarea#prompt:focus { outline: none; border-color: var(--violet); }
 }
 #stage { max-width: 100%; max-height: 420px; display: block; }
 .stage-msg {
-  position: absolute; inset: auto 0 0 0; padding: 9px 13px;
+  position: absolute; inset: auto 0 0 0; z-index: 5; padding: 9px 13px;
   background: color-mix(in srgb, var(--bg) 92%, transparent); font-family: var(--mono); font-size: 12px; color: var(--dim);
   border-top: 1px solid var(--line); line-height: 1.5;
 }
@@ -1077,6 +1077,7 @@ html.anim-off .controls.wizard .ctl-group.wiz-on { animation: none; }
 html.anim-off .seg-btn.active, html.anim-off .pick-card.active,
 html.anim-off .m3-modetab.active { animation: none !important; }
 html.anim-off .status-flash { animation: none !important; }
+html.anim-off .skel::after { animation: none; }
 
 /* ---------- v6.5: m4ster signature cursor + live interactivity ----------
  * The m4ster fingerprint: a custom orb follows the mouse everywhere
@@ -1429,8 +1430,10 @@ body.mode-upscale .mobile-bar { display: none !important; }
 }
 .up-progress[hidden] { display: none; }
 .up-progress-bar {
-  height: 100%; width: 0%; border-radius: 3px;
-  background: var(--violet); transition: width .2s ease;
+  height: 100%; width: 100%; border-radius: 3px;
+  background: var(--violet);
+  transform: scaleX(0); transform-origin: left center;
+  transition: transform .2s ease;
 }
 
 /* ---------- v8.5: Atlas Packer ---------- */
@@ -3125,3 +3128,91 @@ body.glass-live .m3-modetab.active {
   100% { text-shadow: 0 0 0 transparent; }
 }
 .status-flash { animation: statusFlash .35s ease; }
+
+/* ================= v8.13 — realtime UI states =================
+ * Offline banner, export toast, result-stage skeletons, retry and
+ * empty-state actions. All chrome rides the v8.12 glass tokens; the
+ * only new keyframe is the skeleton shimmer, and it rests under
+ * html.anim-off (see the inventory block above). Entrances for the
+ * banner and toast are transitions, so they work with Animations off. */
+
+/* ---------- offline banner ---------- */
+.offline-bar {
+  position: fixed; top: 10px; left: 50%; z-index: 250;
+  display: flex; align-items: center; gap: 9px;
+  max-width: min(620px, calc(100vw - 24px));
+  padding: 9px 16px; border-radius: 999px;
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid color-mix(in srgb, var(--amber) 55%, transparent);
+  box-shadow: var(--glass-shadow);
+  color: var(--text); font-size: 13px; line-height: 1.4;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translate(-50%, -180%);
+  transition: transform .35s ease, opacity .35s ease, visibility 0s linear .35s;
+}
+.offline-bar.show {
+  opacity: 1; visibility: visible;
+  transform: translate(-50%, 0);
+  transition: transform .35s ease, opacity .35s ease, visibility 0s;
+}
+.offline-dot {
+  flex: none; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--amber);
+}
+
+/* ---------- export confirmation toast ---------- */
+.fl-toast {
+  position: fixed; bottom: 22px; left: 50%; z-index: 250;
+  display: flex; align-items: center; gap: 12px;
+  max-width: min(560px, calc(100vw - 24px));
+  padding: 9px 10px 9px 16px; border-radius: 999px;
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  color: var(--text); font-size: 13px;
+  cursor: pointer;
+  opacity: 0; pointer-events: none;
+  transform: translate(-50%, 16px);
+  transition: transform .3s ease, opacity .3s ease;
+}
+.fl-toast.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.fl-toast-msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-toast-act {
+  flex: none; border: 0; border-radius: 999px; cursor: pointer;
+  padding: 5px 12px; font: inherit; font-weight: 600;
+  background: var(--violet); color: var(--on-accent);
+  transition: transform .18s cubic-bezier(.34, 1.56, .64, 1);
+}
+.fl-toast-act:active { transform: scale(.93); }
+
+/* ---------- result-stage skeletons ----------
+ * Flat glass blocks (no backdrop blur — they sit over live stages).
+ * The shimmer is a light sweep; static under html.anim-off. */
+.skel {
+  position: absolute; inset: 0; z-index: 4;
+  background: var(--glass-bg);
+  overflow: hidden;
+}
+.skel::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .07) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: skelShimmer 1.6s ease-in-out infinite;
+}
+@keyframes skelShimmer { to { transform: translateX(100%); } }
+.skel-stage::before {
+  content: ""; position: absolute; inset: 14% 20%;
+  border: 1.5px dashed color-mix(in srgb, var(--violet) 45%, transparent);
+  border-radius: 10px;
+}
+.skel[hidden] { display: none; }
+
+/* ---------- error / empty-state actions ---------- */
+.retry-dl { margin: 8px 2px 0; }
+.retry-dl[hidden] { display: none; }
+#m3TryAuto { margin-top: 8px; }
+#m3TryAuto[hidden] { display: none; }
+.assets-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.assets-empty-actions[hidden] { display: none; }

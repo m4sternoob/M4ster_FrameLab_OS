@@ -116,6 +116,7 @@ function stageMsg(msg, kind) {
 }
 
 function showStage(canvas, msg) {
+  flSkel("stageSkel", false); /* real content landed — skeleton's job is done */
   const st = $("#stage");
   st.width = canvas.width; st.height = canvas.height;
   st.getContext("2d").drawImage(canvas, 0, 0);
@@ -1086,6 +1087,8 @@ function assetsDownload(item) {
   document.body.appendChild(a);
   a.click();
   a.remove();
+  if (item.kind === "model") toastExport(a.download);
+  else toastExport(a.download, flDataUrlBytes(a.href));
 }
 function renderAssets() {
   const grid = document.getElementById("assetsGrid");
@@ -1155,9 +1158,21 @@ function renderAssets() {
     grid.appendChild(card);
   });
   if (empty) {
+    const total = assetsItems().length;
     empty.hidden = items.length > 0;
-    if (items.length === 0 && assetsItems().length > 0) empty.textContent = "No assets match that filter.";
+    if (items.length === 0 && total > 0) empty.textContent = assetsState.query ? "No assets match that search." : "No assets in this view yet.";
     else if (items.length === 0) empty.textContent = "Nothing here yet — generate a sprite or a mesh and it shows up here.";
+    /* v8.13: the empty state always carries its next step — start
+     * generating when the library is empty, reset the view when a
+     * filter/search is what hid everything */
+    const acts = document.getElementById("assetsEmptyActions");
+    if (acts) {
+      acts.hidden = items.length > 0;
+      const goBtn = document.getElementById("assetsGoSprite");
+      const allBtn = document.getElementById("assetsShowAll");
+      if (goBtn) goBtn.hidden = total > 0;
+      if (allBtn) allBtn.hidden = total === 0;
+    }
   }
   assetsSyncFoot();
 }
@@ -1178,6 +1193,21 @@ function wireAssets() {
   }));
   const search = document.getElementById("assetsSearch");
   if (search) search.addEventListener("input", () => { assetsState.query = search.value.trim(); renderAssets(); });
+  const showAllBtn = document.getElementById("assetsShowAll");
+  if (showAllBtn) showAllBtn.addEventListener("click", () => {
+    assetsState.filter = "all";
+    assetsState.query = "";
+    if (search) search.value = "";
+    document.querySelectorAll(".assets-fbtn[data-f]").forEach((x) => x.classList.toggle("active", x.getAttribute("data-f") === "all"));
+    renderAssets();
+  });
+  const goSpriteBtn = document.getElementById("assetsGoSprite");
+  if (goSpriteBtn) goSpriteBtn.addEventListener("click", () => {
+    const f = document.getElementById("flip2d");
+    if (f) f.click();
+    const target = document.getElementById("tool");
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   const batch = document.getElementById("assetsBatch");
   if (batch) batch.addEventListener("change", () => {
     assetsState.batch = batch.checked;
@@ -1900,7 +1930,7 @@ function renderFramesUI() {
       fc.drawImage(r.frames[fi], 0, 0);
       cv.title = "click to download this frame";
       cv.style.cursor = "pointer";
-      cv.onclick = () => downloadCanvas(cv, `m4ster-${r.name}-frame${oi}.png`);
+      cv.onclick = () => { flSetExportAction("Open My Assets", flOpenAssets); downloadCanvas(cv, `m4ster-${r.name}-frame${oi}.png`); };
       card.appendChild(cv);
       const nm = document.createElement("span");
       nm.className = "fname";
@@ -2024,6 +2054,94 @@ function startPreview() {
 
 /* ---------------- export ---------------- */
 
+/* ---------- v8.13: shared export confirmation toast ----------
+ * Every download in the hub lands here: one glass toast naming the
+ * file and its real size, auto-dismissing, click to dismiss. Rapid
+ * successive exports (sheet + manifest, a run of cells) coalesce into
+ * one toast that counts the burst instead of stacking. A caller with
+ * a natural next step registers it once via flSetExportAction; the
+ * next toast carries it as its single action button. */
+function flFmtSize(n) {
+  return n >= 1048576 ? (n / 1048576).toFixed(2) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+}
+/* exact decoded byte count of a base64 data URL (what the file
+ * actually weighs — the helpers below already hold the payload) */
+function flDataUrlBytes(u) {
+  const i = u.indexOf(",");
+  if (i < 0) return 0;
+  const b = u.slice(i + 1);
+  const pad = b.endsWith("==") ? 2 : b.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor(b.length * 3 / 4) - pad);
+}
+let flToastTimer = null, flToastBurst = 0, flToastLastAt = 0;
+let flNextAction = null, flToastAction = null;
+function flSetExportAction(label, fn) { flNextAction = label && fn ? { label, fn } : null; }
+function flOpenAssets() {
+  renderAssets();
+  const s = document.getElementById("labAssets");
+  if (s) s.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function flToastEl() {
+  let t = document.getElementById("flToast");
+  if (t) return t;
+  t = document.createElement("div");
+  t.id = "flToast";
+  t.className = "fl-toast";
+  t.hidden = true;
+  t.setAttribute("role", "status");
+  const msg = document.createElement("span");
+  msg.className = "fl-toast-msg";
+  const act = document.createElement("button");
+  act.type = "button";
+  act.className = "fl-toast-act";
+  act.hidden = true;
+  t.appendChild(msg);
+  t.appendChild(act);
+  t.addEventListener("click", (e) => { if (e.target !== act) flToastHide(); });
+  document.body.appendChild(t);
+  return t;
+}
+function flToastHide() {
+  const t = document.getElementById("flToast");
+  if (!t) return;
+  t.classList.remove("show");
+  clearTimeout(flToastTimer);
+  setTimeout(() => { t.hidden = true; }, 320);
+}
+function toastExport(name, sizeBytes) {
+  const t = flToastEl();
+  const msg = t.querySelector(".fl-toast-msg");
+  const act = t.querySelector(".fl-toast-act");
+  const now = Date.now();
+  flToastBurst = now - flToastLastAt < 900 ? flToastBurst + 1 : 1;
+  flToastLastAt = now;
+  const size = typeof sizeBytes === "number" && sizeBytes > 0 ? " · " + flFmtSize(sizeBytes) : "";
+  msg.textContent = flToastBurst > 1
+    ? "Exported " + flToastBurst + " files — last: " + name + size
+    : "Exported " + name + size;
+  if (flNextAction) { flToastAction = flNextAction; flNextAction = null; }
+  else if (flToastBurst === 1) flToastAction = null;
+  if (flToastAction) {
+    const a = flToastAction;
+    act.textContent = a.label;
+    act.hidden = false;
+    act.onclick = () => { flToastHide(); a.fn(); };
+  } else {
+    act.hidden = true;
+    act.onclick = null;
+  }
+  t.hidden = false;
+  void t.offsetWidth;
+  t.classList.add("show");
+  clearTimeout(flToastTimer);
+  flToastTimer = setTimeout(flToastHide, 4500);
+}
+/* result-stage skeleton toggle (v8.13) */
+function flSkel(id, on) {
+  const s = document.getElementById(id);
+  if (s) s.hidden = !on;
+}
+
 function downloadCanvas(canvas, filename) {
   const a = document.createElement("a");
   a.href = canvas.toDataURL("image/png");
@@ -2031,6 +2149,7 @@ function downloadCanvas(canvas, filename) {
   document.body.appendChild(a);
   a.click();
   a.remove();
+  toastExport(filename, flDataUrlBytes(a.href));
 }
 
 function downloadJSON(obj, filename) {
@@ -2041,21 +2160,25 @@ function downloadJSON(obj, filename) {
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  toastExport(filename, blob.size);
 }
 
 function wireExport() {
-  $("#dlSheet").onclick = () => state.atlas && downloadCanvas(state.atlas.canvas, state.atlas.pngName || "m4ster-sprite-sheet.png");
-  $("#dlJson").onclick = () => state.atlas && downloadJSON(state.atlas.manifest, state.atlas.jsonName || "m4ster-sprite-atlas.json");
-  $("#dlAnim").onclick = () => {
+  /* pipeline exports come from generated rows — the natural next step
+   * is the assets view they live in (v8.13 toast action) */
+  const withAssets = (fn) => () => { flSetExportAction("Open My Assets", flOpenAssets); fn(); };
+  $("#dlSheet").onclick = withAssets(() => state.atlas && downloadCanvas(state.atlas.canvas, state.atlas.pngName || "m4ster-sprite-sheet.png"));
+  $("#dlJson").onclick = withAssets(() => state.atlas && downloadJSON(state.atlas.manifest, state.atlas.jsonName || "m4ster-sprite-atlas.json"));
+  $("#dlAnim").onclick = withAssets(() => {
     // one button, both files: the picked animation as sheet PNG + manifest JSON
     if (!state.atlas) return;
     downloadCanvas(state.atlas.canvas, state.atlas.pngName || "m4ster-sprite-sheet.png");
     setTimeout(() => downloadJSON(state.atlas.manifest, state.atlas.jsonName || "m4ster-sprite-atlas.json"), 400);
-  };
+  });
   const godotBtn = $("#dlGodot");
-  if (godotBtn) godotBtn.onclick = () => { downloadGodotPack().catch(e => stageMsg("Godot export failed: " + humanErr(e), true)); };
+  if (godotBtn) godotBtn.onclick = withAssets(() => { downloadGodotPack().catch(e => stageMsg("Godot export failed: " + humanErr(e), true)); });
   const unityBtn = $("#dlUnity");
-  if (unityBtn) unityBtn.onclick = () => { downloadUnityPack().catch(e => stageMsg("Unity export failed: " + humanErr(e), true)); };
+  if (unityBtn) unityBtn.onclick = withAssets(() => { downloadUnityPack().catch(e => stageMsg("Unity export failed: " + humanErr(e), true)); });
   $("#dlFrames").onclick = () => {
     if (state.slicer && state.slicer.selection.length) {
       // slicer: export the picked frames in order
@@ -2068,6 +2191,7 @@ function wireExport() {
       return;
     }
     if (!state.rows.length) return;
+    flSetExportAction("Open My Assets", flOpenAssets);
     let delay = 0;
     state.rows.forEach(r => {
       r.order.forEach((fi, oi) => {
@@ -3627,6 +3751,7 @@ async function runPipeline() {
   setStatusBar("");
   resetSteps();
   hideRetry();
+  flSkel("stageSkel", true); /* shape placeholder until the first real frame lands */
   enableExport(false);
   state.rows = []; state.originals = []; state.atlas = null;
   state.revision = Date.now().toString(36);
@@ -3795,6 +3920,7 @@ async function runPipeline() {
       setStatusBar("error");
     }
   } finally {
+    flSkel("stageSkel", false);
     setBusy(false);
   }
 }
@@ -5836,6 +5962,21 @@ function coStatus(msg) {
   if (ro) ro.textContent = msg;
 }
 
+/* v8.13: real model-download progress — the bar is driven only by the
+ * aiLoadSession fraction (network bytes); inference has no honest %
+ * and shows stage text alone. Same scaleX fill as the Upscale bar. */
+function coProgress(frac) {
+  const row = $("#coProgressRow"), bar = $("#coProgressBar");
+  if (!row || !bar) return;
+  if (frac === null || frac === undefined) {
+    row.hidden = true;
+    bar.style.transform = "scaleX(0)";
+    return;
+  }
+  row.hidden = false;
+  bar.style.transform = "scaleX(" + Math.max(0, Math.min(1, frac)) + ")";
+}
+
 function coDraw() {
   const C = coState();
   const cv = $("#coCanvas");
@@ -5960,11 +6101,29 @@ async function coRun() {
   if (!C.src) { coStatus("Load a photo or the sample first."); return; }
   if (C.busy) return;
   coSetBusy(true);
+  const retryBtn = $("#coRetry");
+  if (retryBtn) retryBtn.hidden = true;
+  /* the model download gets its own failure path (v8.13): if the
+   * download is what broke, the fix is a button that retries just the
+   * load — a failed load is never cached, so the re-run picks up
+   * exactly there; inference failures stay a plain status line */
+  let session;
   try {
-    coStatus("Downloading model once… (about 4.4 MB)");
-    const session = await aiLoadSession(CUTOUT_MODEL_URL, (p) => {
-      if (p < 1) coStatus("Downloading model once… " + Math.round(p * 100) + "%");
+    coStatus("Downloading the Cutout model — about 4.4 MB, once only…");
+    session = await aiLoadSession(CUTOUT_MODEL_URL, (p) => {
+      if (p < 1) {
+        coProgress(p);
+        coStatus("Downloading the Cutout model — " + Math.round(p * 100) + "%");
+      } else coProgress(null);
     });
+  } catch (err) {
+    coProgress(null);
+    coStatus("Cutout model download failed: " + humanErr(err));
+    if (retryBtn) retryBtn.hidden = false;
+    coSetBusy(false);
+    return;
+  }
+  try {
     coStatus("Removing background… (" + session.backend + ")");
     /* the model eats a square 320×320 frame — the aspect squash is fine
      * for a saliency matte; it is stretched back onto the real frame */
@@ -6046,6 +6205,8 @@ function wireCutout() {
     e.target.value = "";
   };
   $("#coRun").onclick = coRun;
+  const coRetryBtn = $("#coRetry");
+  if (coRetryBtn) coRetryBtn.onclick = () => { coRetryBtn.hidden = true; coRun(); };
   $("#coExport").onclick = coExportPNG;
   $("#coExport").disabled = !coState().matte;
   const th = $("#coThreshold"), fe = $("#coFeather");
@@ -6230,11 +6391,11 @@ function upProgress(frac) {
   if (!row || !bar) return;
   if (frac === null || frac === undefined) {
     row.hidden = true;
-    bar.style.width = "0%";
+    bar.style.transform = "scaleX(0)";
     return;
   }
   row.hidden = false;
-  bar.style.width = Math.round(frac * 100) + "%";
+  bar.style.transform = "scaleX(" + Math.max(0, Math.min(1, frac)) + ")";
 }
 
 function upDraw(note) {
@@ -6392,11 +6553,28 @@ async function upRun() {
   if (!U.src) { upStatus("Load an image or the sample first."); return; }
   upSetBusy(true);
   U.cancel = false;
+  const upRetryBtn = $("#upRetry");
+  if (upRetryBtn) upRetryBtn.hidden = true;
+  /* model download = its own failure path (v8.13), same as Cutout:
+   * a broken download earns a Retry download button; the tile phase
+   * below keeps the existing status-only handling */
+  let session;
   try {
-    upStatus("Downloading model once… (about 5 MB)");
-    const session = await aiLoadSession(UPSCALE_MODEL_URL, (p) => {
-      if (p < 1) upStatus("Downloading model once… " + Math.round(p * 100) + "%");
+    upStatus("Downloading the Upscale model — about 5 MB, once only…");
+    session = await aiLoadSession(UPSCALE_MODEL_URL, (p) => {
+      if (p < 1) {
+        upProgress(p);
+        upStatus("Downloading the Upscale model — " + Math.round(p * 100) + "%");
+      } else upProgress(null);
     });
+  } catch (err) {
+    upProgress(null);
+    upStatus("Upscale model download failed: " + humanErr(err));
+    if (upRetryBtn) upRetryBtn.hidden = false;
+    upSetBusy(false);
+    return;
+  }
+  try {
     const w = U.src.w, h = U.src.h;
     const ow = w * UP_SCALE, oh = h * UP_SCALE;
     const plan = upTilePlan(w, h);
@@ -6542,6 +6720,8 @@ function wireUpscale() {
     e.target.value = "";
   };
   $("#upRun").onclick = upRun;
+  const upRetryBtn2 = $("#upRetry");
+  if (upRetryBtn2) upRetryBtn2.onclick = () => { upRetryBtn2.hidden = true; upRun(); };
   $("#upExport").onclick = upExportPNG;
   $("#upExport").disabled = !upState().out;
   $("#upPxApply").onclick = () => { if (!upState().busy) upPixelRun(); };
@@ -9250,6 +9430,7 @@ function downloadBytes(u8, filename, mime) {
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+  toastExport(filename, u8.byteLength);
 }
 
 function lzwEncode(indices, minCodeSize) {
@@ -10327,9 +10508,10 @@ async function m3Call(prov, session, fnIndex, data, deadline, onEvent) {
  * 5 seconds, and only when the position actually changed. Providers that
  * never send estimation events simply never trigger it. */
 function m3QueueSay(say, name) {
-  let lastAt = 0, lastPos = null;
+  let lastAt = 0, lastPos = null, firstAt = null;
   return function (q) {
     if (!q || q.position === null || q.position === undefined) return;
+    if (firstAt === null) firstAt = Date.now();
     if (q.position === lastPos) return;
     const now = Date.now();
     if (now - lastAt < 5000) return;
@@ -10339,6 +10521,10 @@ function m3QueueSay(say, name) {
     if (q.eta !== null && q.eta !== undefined && isFinite(q.eta) && q.eta > 0) {
       t += ", roughly ~" + Math.max(1, Math.round(q.eta)) + "s";
     }
+    /* elapsed-time honesty (v8.13): after 20s of real queue time the
+     * line says the wait is long — a fact about the clock, never a
+     * fabricated percentage */
+    if (now - firstAt >= 20000) t += " — still queued; the free line is slow right now";
     say(t + "…");
   };
 }
@@ -11033,6 +11219,7 @@ function wire3DLab() {
     a.download = filename;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 6000);
+    toastExport(filename, blob.size);
   }
   function m3FilteredGroup(keepFn) {
     const s = m3three, THREE = s.THREE;
@@ -11096,6 +11283,7 @@ function wire3DLab() {
     a.download = filename;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 6000);
+    toastExport(filename, blob.size);
   }
   async function m3ExportOBJ(filename) {
     if (!m3three || !m3three.model) return false;
@@ -11416,6 +11604,7 @@ function wire3DLab() {
       a.download = "framelab-view.png";
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toastExport("framelab-view.png", blob.size);
     }, "image/png");
   });
   const rdTex = document.getElementById("m3RdTex");
@@ -11548,9 +11737,12 @@ function wire3DLab() {
   /* one presentation path for every finished mesh — download links,
    * sizes, the result note, the viewer — whoever built the mesh */
   function presentResult(out, usedName, usedId, secs) {
+    flSkel("m3Skel", false); /* the mesh is here — skeleton off */
     const glbUrl = URL.createObjectURL(out.glb);
     objUrls.push(glbUrl);
     glbLink.href = glbUrl;
+    glbLink.dataset.size = out.glb.size;
+    if (out.obj) objLink.dataset.size = out.obj.size;
     glbSize.textContent = "· " + fmtSize(out.glb.size);
     if (out.obj) {
       const objUrl = URL.createObjectURL(out.obj);
@@ -11579,6 +11771,10 @@ function wire3DLab() {
     presentResult(out, usedName, usedId, secs);
   };
 
+  /* v8.13: the result download links confirm through the shared toast */
+  glbLink.addEventListener("click", () => toastExport(glbLink.download || "framelab-mesh.glb", Number(glbLink.dataset.size) || undefined));
+  objLink.addEventListener("click", () => toastExport(objLink.download || "framelab-mesh.obj", Number(objLink.dataset.size) || undefined));
+
   go.addEventListener("click", async () => {
     if (!file || running) return;
     running = true;
@@ -11588,6 +11784,9 @@ function wire3DLab() {
     hideGlbPreview();
     objUrls.forEach((u) => URL.revokeObjectURL(u));
     objUrls = [];
+    flSkel("m3Skel", true); /* block placeholder while the providers work */
+    const tryAutoBtn = document.getElementById("m3TryAuto");
+    if (tryAutoBtn) tryAutoBtn.hidden = true;
     const mode = provSel.value;
     /* the optional token is read once, here, at run start — every
      * request this run makes then carries it (see m3AuthHeaders) */
@@ -11651,11 +11850,25 @@ function wire3DLab() {
         say((mode === "auto" ? "All five free 3D providers failed: " : "That provider failed: ") +
           em + " No fake mesh, no charge — give the free GPUs a minute and try again.", true);
       }
+      /* v8.13: a single-provider failure earns its concrete fix —
+       * one click flips to AUTO and re-runs the same image */
+      if (mode !== "auto") {
+        const tb = document.getElementById("m3TryAuto");
+        if (tb) tb.hidden = false;
+      }
     } finally {
+      flSkel("m3Skel", false);
       running = false;
       go.disabled = !file;
       go.textContent = "✨ Generate";
     }
+  });
+  const tryAutoBtn2 = document.getElementById("m3TryAuto");
+  if (tryAutoBtn2) tryAutoBtn2.addEventListener("click", () => {
+    tryAutoBtn2.hidden = true;
+    provSel.value = "auto";
+    provSel.dispatchEvent(new Event("change", { bubbles: true }));
+    if (!go.disabled) go.click();
   });
 }
 
@@ -11994,6 +12207,7 @@ document.addEventListener("DOMContentLoaded", function () {
     a.href = out.toDataURL("image/png");
     a.download = "framelab-palette.png";
     a.click();
+    toastExport("framelab-palette.png", flDataUrlBytes(a.href));
   });
   $("ppHexCopy").addEventListener("click", () => {
     if (navigator.clipboard) navigator.clipboard.writeText(lastHex.join(", "));
@@ -12077,6 +12291,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const text = (promptText || "").trim();
     if (!text) { t3dStatus("Describe the model first."); return; }
     window.M3_T3D_RUNNING = true;
+    flSkel("m3Skel", true); /* the direct route builds in the same stage */
     const btn = $("m3ChainBtn");
     if (btn) btn.disabled = true;
     const t0 = Date.now();
@@ -12134,6 +12349,7 @@ document.addEventListener("DOMContentLoaded", function () {
       t3dStep(1);
       t3dStatus("Text to 3D stopped: " + humanErr(e));
     } finally {
+      flSkel("m3Skel", false);
       window.M3_T3D_RUNNING = false;
       if (btn) btn.disabled = false;
     }
@@ -12949,4 +13165,32 @@ document.addEventListener("DOMContentLoaded", function () {
   });
   apply();
   if(/(?:\?|&|#)edit(?:=1)?(?:&|$)/.test(location.href))setEditing(true);
+})();
+
+/* ---------- v8.13: offline state (realtime backbone) ----------
+ * The banner is driven by the browser's own signals — the boot-time
+ * navigator.onLine read plus the online/offline events — so it flips
+ * the moment the connection drops or returns. Nothing is polled and
+ * nothing is guessed: while offline, the service-worker shell and
+ * every on-device tool keep working (the banner says exactly that);
+ * AI generation calls simply fail honestly through humanErr. */
+(function () {
+  var bar = document.getElementById("offlineBar");
+  if (!bar) return;
+  var hideT = null;
+  function render() {
+    if (navigator.onLine) {
+      bar.classList.remove("show");
+      clearTimeout(hideT);
+      hideT = setTimeout(function () { bar.hidden = true; }, 380);
+    } else {
+      clearTimeout(hideT);
+      bar.hidden = false;
+      void bar.offsetWidth;
+      bar.classList.add("show");
+    }
+  }
+  window.addEventListener("online", render);
+  window.addEventListener("offline", render);
+  render();
 })();
