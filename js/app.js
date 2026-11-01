@@ -4481,7 +4481,7 @@ function slicerOverlay() {
     ctx.globalAlpha = 0.9;
     ctx.lineWidth = Math.max(1, Math.min(S.imgW, S.imgH) / 400);
     const fs = Math.max(10, Math.min(S.imgW, S.imgH) / 24);
-    ctx.font = `${fs}px monospace`;
+    ctx.font = `${fs}px "JetBrains Mono", monospace`;
     rects.forEach((rc, i) => {
       ctx.strokeRect(rc.x + 0.5, rc.y + 0.5, Math.max(1, rc.w - 1), Math.max(1, rc.h - 1));
       ctx.fillText(String(i + 1), rc.x + 4, rc.y + fs);
