@@ -27,6 +27,72 @@ sheet PNG plus an atlas manifest JSON your game can read directly.
 
 ![Text to 3D — words straight to a mesh](assets/framelab-3d-mesh.gif)
 
+## v8.13 — The six states a tool suite owes its users
+
+- **Loading tells the truth.** Model downloads for Cutout and Upscaler now drive a real progress bar from the actual bytes received ("Downloading the Cutout model — 43%"); work that has no honest percentage (background-removal inference, AI queues) shows its real stage instead — queue position, tile counts, stage names — with shape skeletons holding the result stages. No synthetic progress anywhere.
+- **Slow network is acknowledged, not hidden.** A 3D run still queued after 20 seconds says so ("still queued; the free line is slow right now") — a clock fact drawn from the provider's own queue events.
+- **Errors come with a way out.** A failed model download offers a "Retry download" button that resumes exactly at the load; a failed single-provider 3D run offers one-click "Try AUTO (all providers)"; sprite failures keep their retry bar with the procedural fallback.
+- **Empty explains itself.** My Assets now distinguishes an empty library ("Generate your first sprite" takes you to the wizard) from a filter or search that hid everything ("Show all" resets the view).
+- **Success confirms itself.** Every export across the suite — tool PNGs, DragLab, atlases, JSON manifests, 3D models, engine packs — now lands with a glass confirmation toast naming the real file and its real size, and pipeline exports carry an "Open My Assets" next step. Rapid multi-file exports coalesce into one summary line.
+- **Offline is a state, not a surprise.** The moment the connection drops, a banner appears: the tools already loaded on the device keep working, AI generation needs a connection. It clears itself the instant the connection returns, driven by the browser's live online/offline signals.
+
+## v8.12 — One liquid-glass system across the whole app
+
+- **One frosted-glass material everywhere.** The 2D tools and the 3D studio used to read as two different products; every surface now shares a single glass recipe — translucent fill, backdrop blur on static chrome, a light top edge and one soft shadow — derived from the active theme, so all six themes glassify in their own colours. Live canvases and the 3D viewer stay flat: no blur or milky layer ever sits over artwork.
+- **The 3D studio joins the theme.** Its accents, primary buttons and active states now follow the selected theme instead of a fixed lime, while status greens (success, provider health) keep their meaning.
+- **A sliding 2D ⇄ 3D switch.** The dimension flip in the top bar is now a glass slider: one thumb glides between the two sides on a spring, in the same spot whichever side is open.
+- **Press feedback on every control.** Buttons and pills squash to 0.93 on press, cards to 0.97, picks pop when selected, toggle knobs and the flip thumb slide on a spring curve, and status lines flash when they change. All of it is interaction-triggered, and the press feedback is transition-based, so it keeps working with Animations turned off.
+- **Every icon button and slider restyled** to the same glass chrome — toolbar and viewer buttons, gallery arrows, close chips, and all seventeen range sliders share one track-and-thumb design.
+- **Frost transparency control.** Settings → Customize gains a Glass section with a Frost transparency slider (45–92, default 74) that drives the opacity of the entire glass system from a single variable, applies live, persists across visits, and is applied before first paint so there is no flash of the default.
+
+## v8.11 — Text→mesh goes direct, model health goes live, full polish + performance pass
+
+The hub roadmap's last items land here, alongside a site-wide bug,
+polish, and performance sweep.
+
+- **Text → mesh, direct** — the 3D Lab's Text mode now sends the
+  prompt straight to a text-to-3D model (Hunyuan3D-2 Mini) and returns
+  a real mesh. Output is shape-only and labelled as such; the older
+  text → image → mesh route remains as the automatic fallback.
+- **Live model health** — the model picker shows each AI Horde model's
+  live worker count and estimated wait from the Horde status feed, and
+  AUTO mode skips models with no workers online instead of queueing
+  blind.
+- **Favourite models** — star any model in the picker to pin it into a
+  Favourites section at the top. Pins persist in the browser.
+- **3D queue positions** — while a mesh generates, the status line
+  shows the live queue position and estimated wait whenever the
+  provider's stream reports them.
+- **Engine hand-off guide** — the Engine Bridge gains a downloadable
+  import guide: Unity / Unreal / Godot / Blender import steps, format
+  notes (GLB carries textures; OBJ/FBX are geometry-first), scale and
+  orientation notes, and troubleshooting.
+- **Uploads that survive phones** — images headed to the 3D Lab are
+  downscaled in the browser first: one light copy per run, reused by
+  every provider in the chain, so multi-megabyte photos no longer
+  stall the upload five times over.
+- **Fixes** — the retry bar's "Use Procedural instead" escape hatch
+  works again (a duplicated element id had left it dead and made the
+  Step-3 upload button fire two actions at once); the service worker
+  no longer substitutes the home page for failed data requests, so 3D
+  runs fail fast and loud instead of hanging, and its cache is capped
+  to the app shell; overlapping Cutout/Upscale model downloads no
+  longer steal each other's progress readouts.
+- **Polish** — error messages are human-readable everywhere (no more
+  raw "Failed to fetch"); every clickable control has a hover state;
+  the footer Reset layout button is styled; tool export buttons stay
+  disabled until there is something to export; the main Generate
+  button shows a working label; one Export verb family across all
+  tools; larger tap targets on the picker close button and gallery
+  arrows.
+- **Performance** — DragLab re-renders only what changed: warp results
+  are cached and reused, and brush hovers no longer recompute the full
+  warp — output is pixel-identical. The cursor trail draws from a
+  pre-rendered glow sprite and its loop parks when idle; sprite,
+  slicer, and showcase previews pause while off-screen; the
+  Animations toggle in Customize now genuinely gates the site's
+  decorative animation (off by default, as labelled).
+
 ## v8.10 — GIF Sheet: an animated GIF in, a sprite sheet out
 
 A new standalone tool next to Palette Lab — the round trip's other
