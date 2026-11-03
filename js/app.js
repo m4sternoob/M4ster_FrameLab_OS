@@ -25,18 +25,6 @@ function mulberry32(seed) {
 
 function fail(msg) { throw new Error(msg); }
 
-/* one friendly line for any thrown error: network, timeout and abort
- * failures get plain words instead of raw exception text; anything
- * else keeps its own message, capped so a long string can never
- * flood a status line. */
-function humanErr(e) {
-  const m = e && e.message ? String(e.message) : String(e);
-  if (/failed to fetch|networkerror|network error|load failed/i.test(m)) return "couldn't be reached (network)";
-  if (/timed out|timeout/i.test(m)) return "timed out";
-  if (/aborted|aborterror/i.test(m)) return "was stopped";
-  return m.length > 140 ? m.slice(0, 140) + "…" : m;
-}
-
 function makeCanvas(w, h) {
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
@@ -66,14 +54,6 @@ const state = {
   strict: false,           // retry mode: appends the strict isolation clause to prompts
   slicer: null,            // v6.6 dedicated slicer: { sheet, imgW, imgH, rows, cols, mode, bg, knockout, margin, pad, ox, oy, pieces:[{canvas,empty,rect}], selection:[], fps, playback }
   pixelart: null,          // v6.5 image→pixel-art: { src:{data,w,h}, imgW, imgH, w, h, colors, dither, scale, out }
-  draglab: null,           // v8.2 DragLab warp: { src:{data,w,h}, imgW, imgH, points:[{px,py,qx,qy}], name, mode, brush, brushUndo, brushKind, brushSize, brushStrength } (brush = v8.6 liquify grid)
-  cutout: null,            // v8.3 Cutout Lab AI bg removal: { src:{data,w,h}, imgW, imgH, matte, threshold, feather, busy, name }
-  upscale: null,           // v8.4 Upscale Lab AI enlargement: { src, srcCv, imgW, imgH, out, outKind, mode, pxScale, pxAlgo, exportScale, compare, busy, name }
-  atlasPack: null,         // v8.5 Atlas Packer: { items:[{name,cv,data}], packed, pad, extrude, pot, labels, format } — state.atlas is the generator's own sheet, hence the longer key
-  normalmap: null,         // v8.7 Normal Map Lab: { src:{data,w,h}, imgW, imgH, name, view, strength, smooth, alphaMode, wrap, flipY, maps, light }
-  tiler: null,             // v8.8 Seamless Tiler: { src:{data,w,h}, full:{data,w,h}, imgW, imgH, name, view, strength, healed, healedCv }
-  palette: null,           // v8.9 Palette Lab: { src:{data,w,h}, imgW, imgH, name, work:{data,w,h}, colors:[{r,g,b,count}], fromIdx, toHex, tolerance, undo:[] }
-  gif: null,               // v8.10 GIF Sheet: { frames:[{data,duration}], frameW, frameH, name, cols, autoCols } — composited frames at logical-screen size
 };
 
 /* non-destructive curation sidecar: order lives here, never in the frames */
@@ -97,26 +77,14 @@ function resetSteps() {
   document.querySelectorAll("#stepper li").forEach(li => li.classList.remove("active", "done", "error", "warn"));
 }
 
-/* v8.12: one-shot accent glow on a status line (decorative — the
- * .status-flash keyframe rests under html.anim-off). Restart-safe:
- * removing the class + forcing reflow replays it on rapid updates. */
-function pulseStatus(el) {
-  if (!el) return;
-  el.classList.remove("status-flash");
-  void el.offsetWidth;
-  el.classList.add("status-flash");
-}
-
 function stageMsg(msg, kind) {
   const el = $("#stageMsg");
   el.textContent = msg;
   el.classList.toggle("err", kind === true || kind === "err");
   el.classList.toggle("warn", kind === "warn");
-  pulseStatus(el);
 }
 
 function showStage(canvas, msg) {
-  flSkel("stageSkel", false); /* real content landed — skeleton's job is done */
   const st = $("#stage");
   st.width = canvas.width; st.height = canvas.height;
   st.getContext("2d").drawImage(canvas, 0, 0);
@@ -141,14 +109,6 @@ const CATEGORY_DEFAULTS = {
   effect:    { type: "explosion", frames: 8 },
   pixelart:  { w: 64, h: 64, colors: 16 },
   slicer:    { rows: 3, cols: 9, mode: "grid", bg: "black", knockout: true, margin: 0, pad: 0, ox: 0, oy: 0, fps: 8, playback: "loop" },
-  draglab:   {},
-  cutout:    {},
-  upscale:   {},
-  atlas:     {},
-  normalmap: {},
-  tiler:     {},
-  palette:   {},
-  gif:       {},
 };
 
 const STATE_FPS = { idle: 6, walk: 8, run: 10, jump: 8, attack: 10 };
@@ -204,158 +164,22 @@ function renderParams() {
   } else if (cat === "pixelart") {
     const px = pxState();
     box.innerHTML = `
-      <div class="field-label">Pixel Converter <span class="dim">(100% offline)</span></div><div class="row"><button type="button" class="btn-ghost" id="pxPick" style="text-align:center">Upload image</button><input type="file" id="pxFile" accept="image/*" hidden></div><div class="field-label">Output size</div><div class="px-dims" id="pxDims">
+      <div class="field-label">Image &rarr; pixel art <span class="dim">(100% offline)</span></div><div class="row"><button type="button" class="btn-ghost" id="pxPick" style="text-align:center">Upload image</button><input type="file" id="pxFile" accept="image/*" hidden></div><div class="field-label">Output size</div><div class="px-dims" id="pxDims">
         ${[16, 32, 48, 64, 96, 128].map(s => `<button type="button" class="seg-btn${s === px.w ? " active" : ""}" data-px="${s}">${s}</button>`).join("")}
         <button type="button" class="seg-btn" id="pxOrigBtn" title="use the uploaded image's original dimensions">Original</button>
       </div><div class="row" style="margin-top:8px"><span class="dim">W</span><input type="number" class="num" id="pxW" min="8" max="1024" value="${px.w}"><span class="dim">H</span><input type="number" class="num" id="pxH" min="8" max="1024" value="${px.h}"></div><div class="field-label">Tile grid <span class="dim">(tilemap overlay)</span></div><div class="row"><label class="chk"><input type="checkbox" id="pxGrid"${px.grid ? " checked" : ""}> show grid</label><select id="pxTile" aria-label="tile size">${[8, 16, 24, 32, 48, 64].map(t => `<option value="${t}"${t === px.tile ? " selected" : ""}>${t}px tiles</option>`).join("")}</select><span class="dim" id="pxTileCount"></span></div><div class="field-label">Colors</div><div class="row"><select id="pxColors" class="grow">
           ${[[2, "2 colors"], [4, "4 colors"], [8, "8 colors"], [16, "16 colors"], [32, "32 colors"], [256, "256 colors"], [0, "Full color"]].map(([v, lbl]) => `<option value="${v}"${v === px.colors ? " selected" : ""}>${lbl}</option>`).join("")}
-        </select></div><label class="chk"><input type="checkbox" id="pxDither"${px.dither ? " checked" : ""}> dithering <span class="dim">(Floyd&ndash;Steinberg)</span></label><div class="row" style="margin-top:8px"><span class="dim">preview</span><input type="range" id="pxScale" min="2" max="16" value="${px.scale}" class="grow" aria-label="preview scale"><span class="dim" id="pxScaleVal">&times;${px.scale}</span></div><button type="button" class="btn-ghost px-download" id="pxDownload">Export pixel art</button><div class="dim">Upload any image — it never leaves your browser.</div>`;
+        </select></div><label class="chk"><input type="checkbox" id="pxDither"${px.dither ? " checked" : ""}> dithering <span class="dim">(Floyd&ndash;Steinberg)</span></label><div class="row" style="margin-top:8px"><span class="dim">preview</span><input type="range" id="pxScale" min="2" max="16" value="${px.scale}" class="grow" aria-label="preview scale"><span class="dim" id="pxScaleVal">&times;${px.scale}</span></div><button type="button" class="btn-ghost px-download" id="pxDownload">Download pixel art</button><div class="dim">Upload any image — it never leaves your browser.</div>`;
     wirePixelArt();
   } else if (cat === "slicer") {
     const sl = slState();
     box.innerHTML = `
-      <div class="field-label">Sprite Slicer <span class="dim">(100% offline)</span></div><div class="row"><button type="button" class="btn-ghost" id="slPick" style="text-align:center">Upload sheet</button><input type="file" id="slFile" accept="image/*" hidden></div><div class="field-label">Mode</div><div class="seg" id="slModeSeg"><button type="button" class="seg-btn${sl.mode === "grid" ? " active" : ""}" data-mode="grid">Grid</button><button type="button" class="seg-btn${sl.mode === "auto" ? " active" : ""}" data-mode="auto">Auto-detect</button></div><div id="slGridRow"${sl.mode === "grid" ? "" : " hidden"}><div class="sl-row"><span class="dim">rows</span><input type="range" id="slRows" min="1" max="32" value="${sl.rows}" aria-label="grid rows"><span class="sl-val" id="slRowsVal">${sl.rows}</span></div><div class="sl-row"><span class="dim">cols</span><input type="range" id="slCols" min="1" max="32" value="${sl.cols}" aria-label="grid columns"><span class="sl-val" id="slColsVal">${sl.cols}</span></div><div class="sl-grid4"><label>margin<input type="number" class="num" id="slMargin" min="0" max="200" value="${sl.margin}"></label><label>padding<input type="number" class="num" id="slPad" min="0" max="200" value="${sl.pad}"></label><label>offset x<input type="number" class="num" id="slOx" min="0" max="500" value="${sl.ox}"></label><label>offset y<input type="number" class="num" id="slOy" min="0" max="500" value="${sl.oy}"></label></div></div><div class="sl-readout" id="slReadout">Upload a sheet to start</div><div class="field-label">Background <span class="dim">(treated as empty)</span></div><div class="seg cols4" id="slBgSeg">
+      <div class="field-label">Sprite slicer <span class="dim">(100% offline)</span></div><div class="row"><button type="button" class="btn-ghost" id="slPick" style="text-align:center">Upload sheet</button><input type="file" id="slFile" accept="image/*" hidden></div><div class="field-label">Mode</div><div class="seg" id="slModeSeg"><button type="button" class="seg-btn${sl.mode === "grid" ? " active" : ""}" data-mode="grid">Grid</button><button type="button" class="seg-btn${sl.mode === "auto" ? " active" : ""}" data-mode="auto">Auto-detect</button></div><div id="slGridRow"${sl.mode === "grid" ? "" : " hidden"}><div class="sl-row"><span class="dim">rows</span><input type="range" id="slRows" min="1" max="32" value="${sl.rows}" aria-label="grid rows"><span class="sl-val" id="slRowsVal">${sl.rows}</span></div><div class="sl-row"><span class="dim">cols</span><input type="range" id="slCols" min="1" max="32" value="${sl.cols}" aria-label="grid columns"><span class="sl-val" id="slColsVal">${sl.cols}</span></div><div class="sl-grid4"><label>margin<input type="number" class="num" id="slMargin" min="0" max="200" value="${sl.margin}"></label><label>padding<input type="number" class="num" id="slPad" min="0" max="200" value="${sl.pad}"></label><label>offset x<input type="number" class="num" id="slOx" min="0" max="500" value="${sl.ox}"></label><label>offset y<input type="number" class="num" id="slOy" min="0" max="500" value="${sl.oy}"></label></div></div><div class="sl-readout" id="slReadout">upload a sheet to start</div><div class="field-label">Background <span class="dim">(treated as empty)</span></div><div class="seg cols4" id="slBgSeg">
         ${[["transparent", "Alpha"], ["black", "Black"], ["white", "White"], ["chroma", "Key"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === sl.bg ? " active" : ""}" data-bg="${v}">${lbl}</button>`).join("")}
       </div><label class="knock-row"><input type="checkbox" id="slKnockout"${sl.knockout ? " checked" : ""}> Knockout bg &rarr; transparent</label><div class="sl-pick-row"><button type="button" class="btn-ghost" id="slSelectAll">Select all</button><button type="button" class="btn-ghost" id="slClear">Clear</button><button type="button" class="btn-ghost" id="slReslice">Re-slice</button></div><div class="sl-hint">Click pieces in order &mdash; 1st = frame 1. Empty cells flagged.</div><div class="field-label">Playback</div><div class="row"><span class="dim">fps</span><select id="slFps">${[6, 8, 12, 24].map(f => `<option value="${f}"${f === sl.fps ? " selected" : ""}>${f} fps</option>`).join("")}</select></div><div class="seg" id="slPlaybackSeg" style="margin-top:8px">
         ${[["loop", "Loop"], ["once", "Once"], ["pingpong", "Ping-pong"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === sl.playback ? " active" : ""}" data-playback="${v}">${lbl}</button>`).join("")}
-      </div><button type="button" class="btn-ghost sl-download" id="slDownload" disabled>Export animation <span class="dim">PNG + JSON</span></button><button type="button" class="btn-ghost sl-download" id="slCells" disabled>Export cells <span class="dim">individual PNGs</span></button><div class="dim">100% offline.</div>`;
+      </div><button type="button" class="btn-ghost sl-download" id="slDownload" disabled>Download animation <span class="dim">PNG + JSON</span></button><button type="button" class="btn-ghost sl-download" id="slCells" disabled>Download cells <span class="dim">individual PNGs</span></button><div class="dim">100% offline.</div>`;
     wireSlicer();
-  } else if (cat === "draglab") {
-    const D = dlState();
-    box.innerHTML = `
-      <div class="field-label">DragLab <span class="dim">(100% offline)</span></div>
-      <p class="dim" style="margin:2px 0 8px">DragLab — pull any photo into shape. Click, drag, done. Runs 100% in your browser: no AI model, no uploads, no login.</p>
-      <div class="seg" id="dlModeSeg" style="grid-template-columns:repeat(2,minmax(0,1fr))"><button type="button" class="seg-btn${D.mode === "points" ? " active" : ""}" data-dlmode="points">Points</button><button type="button" class="seg-btn${D.mode === "brush" ? " active" : ""}" data-dlmode="brush">Brush</button></div>
-      <div class="row"><button type="button" class="btn-ghost" id="dlSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="dlPick" style="text-align:center">Upload photo</button><input type="file" id="dlFile" accept="image/*" hidden></div>
-      <div id="dlPointsCtl"${D.mode === "brush" ? " hidden" : ""}>
-        <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="dlUndo">Undo point</button><button type="button" class="btn-ghost" id="dlReset">Reset</button></div>
-        <div class="dim" style="margin-top:8px">Click the photo to add a point, drag it to pull the picture. Right-click a point to remove it.</div>
-      </div>
-      <div id="dlBrushCtl"${D.mode === "brush" ? "" : " hidden"}>
-        <div class="field-label">Liquify brush</div>
-        <div class="seg cols4" id="dlBrushSeg">
-          ${[["push", "Push"], ["pinch", "Pinch"], ["bloat", "Bloat"], ["twirl", "Twirl"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === D.brushKind ? " active" : ""}" data-brush="${v}">${lbl}</button>`).join("")}
-        </div>
-        <div class="sl-row"><span class="dim">size</span><input type="range" id="dlBrushSize" min="16" max="160" step="4" value="${D.brushSize}" aria-label="brush size"><span class="sl-val" id="dlBrushSizeVal">${D.brushSize}px</span></div>
-        <div class="sl-row"><span class="dim">strength</span><input type="range" id="dlBrushStrength" min="0" max="100" value="${D.brushStrength}" aria-label="brush strength"><span class="sl-val" id="dlBrushStrengthVal">${D.brushStrength}%</span></div>
-        <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="dlBrushUndo">Undo stroke</button><button type="button" class="btn-ghost" id="dlResetB">Reset</button></div>
-        <div class="dim" style="margin-top:8px">Paint straight on the photo: push it along, pinch it in, bloat it out, twirl it round. Points and brush work stack — switch modes freely.</div>
-      </div>
-      <button type="button" class="btn-ghost dl-download" id="dlExport" disabled>Export PNG</button>`;
-    wireDraglab();
-  } else if (cat === "cutout") {
-    const co = coState();
-    box.innerHTML = `
-      <div class="field-label">Cutout Lab <span class="dim">(AI, in your browser)</span></div>
-      <p class="dim" style="margin:2px 0 8px">Cutout Lab — AI background removal that runs in your browser. The model downloads once (about 4.4 MB); your photos never leave your device. No uploads, no login.</p>
-      <div class="row"><button type="button" class="btn-ghost" id="coSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="coPick" style="text-align:center">Upload photo</button><input type="file" id="coFile" accept="image/*" hidden></div>
-      <button type="button" class="btn-ghost co-download" id="coRun">Remove background</button>
-      <div class="field-label">Edge cleanup <span class="dim">(live — no re-run)</span></div>
-      <div class="sl-row"><span class="dim">cut</span><input type="range" id="coThreshold" min="0" max="100" value="${co.threshold}" aria-label="background cut threshold"><span class="sl-val" id="coThresholdVal">${co.threshold}</span></div>
-      <div class="sl-row"><span class="dim">feather</span><input type="range" id="coFeather" min="0" max="24" value="${co.feather}" aria-label="edge feather"><span class="sl-val" id="coFeatherVal">${co.feather}px</span></div>
-      <button type="button" class="btn-ghost co-download" id="coExport" disabled>Export PNG</button>
-      <div class="dim" style="margin-top:8px">Model: U-2-Net (u2netp) via the rembg project — Apache-2.0. Runs on your GPU when it can, CPU otherwise.</div>`;
-    wireCutout();
-  } else if (cat === "upscale") {
-    const up = upState();
-    box.innerHTML = `
-      <div class="field-label">Upscale Lab <span class="dim">(AI, in your browser)</span></div>
-      <p class="dim" style="margin:2px 0 8px">Upscale Lab — AI enlargement in your browser. Model downloads once (about 5 MB); photos never leave your device. For photos/art — pixel art stays crisp with the Pixel Converter instead.</p>
-      <div class="row"><button type="button" class="btn-ghost" id="upSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="upPick" style="text-align:center">Upload image</button><input type="file" id="upFile" accept="image/*" hidden></div>
-      <div class="field-label">Mode</div>
-      <div class="seg" id="upModeSeg"><button type="button" class="seg-btn${up.mode === "ai" ? " active" : ""}" data-upmode="ai">AI &times;4</button><button type="button" class="seg-btn${up.mode === "pixel" ? " active" : ""}" data-upmode="pixel">Pixel</button></div>
-      <div id="upAiRow"${up.mode === "ai" ? "" : " hidden"}>
-        <button type="button" class="btn-ghost up-download" id="upRun">Upscale &times;4</button>
-        <div class="row" style="margin-top:8px"><span class="dim">export size</span><select id="upExportScale" class="grow"><option value="4"${up.exportScale === 4 ? " selected" : ""}>&times;4 — full result</option><option value="2"${up.exportScale === 2 ? " selected" : ""}>&times;2 — half size</option></select></div>
-      </div>
-      <div id="upPixelRow"${up.mode === "pixel" ? "" : " hidden"}>
-        <div class="row"><span class="dim">scale</span><select id="upPxScale">${[2, 3, 4].map(s => `<option value="${s}"${s === up.pxScale ? " selected" : ""}>&times;${s}</option>`).join("")}</select><span class="dim">filter</span><select id="upPxAlgo" class="grow"><option value="nearest"${up.pxAlgo === "nearest" ? " selected" : ""}>Nearest — crisp</option><option value="epx"${up.pxAlgo === "epx" ? " selected" : ""}>EPX — smooth</option></select></div>
-        <button type="button" class="btn-ghost up-download" id="upPxApply">Enlarge</button>
-        <div class="dim" style="margin-top:8px">Pixel mode is instant and 100% offline — no model. EPX works at &times;2 and &times;4.</div>
-      </div>
-      <button type="button" class="btn-ghost up-download" id="upExport" disabled>Export PNG</button>
-      <div class="dim" style="margin-top:8px">Model: Real-ESRGAN (realesr-general-x4v3) — BSD-3-Clause. Runs on your GPU when it can, CPU otherwise.</div>`;
-    wireUpscale();
-  } else if (cat === "atlas") {
-    const at = atState();
-    box.innerHTML = `
-      <div class="field-label">Atlas Packer <span class="dim">(100% offline)</span></div>
-      <p class="dim" style="margin:2px 0 8px">Atlas Packer — turn loose frames into one game-ready sprite sheet. Runs 100% in your browser.</p>
-      <div class="row"><button type="button" class="btn-ghost" id="atPick" style="text-align:center">Add images</button><input type="file" id="atFile" accept="image/*" multiple hidden><button type="button" class="btn-ghost" id="atClear">Clear</button></div>
-      <div class="sl-row"><span class="dim">padding</span><input type="range" id="atPad" min="0" max="8" value="${at.pad}" aria-label="padding between sprites"><span class="sl-val" id="atPadVal">${at.pad}px</span></div>
-      <label class="chk"><input type="checkbox" id="atExtrude"${at.extrude ? " checked" : ""}> extrude edges <span class="dim">(stops texture bleeding)</span></label>
-      <label class="chk"><input type="checkbox" id="atPot"${at.pot ? " checked" : ""}> power-of-two size</label>
-      <label class="chk"><input type="checkbox" id="atLabels"${at.labels ? " checked" : ""}> outline + names on preview</label>
-      <button type="button" class="btn-ghost at-download" id="atPack">Pack</button>
-      <div class="field-label">Manifest format</div>
-      <div class="row"><select id="atFormat" class="grow"><option value="json"${at.format === "json" ? " selected" : ""}>JSON — TexturePacker hash</option><option value="unity"${at.format === "unity" ? " selected" : ""}>Unity — .tpsheet</option><option value="godot"${at.format === "godot" ? " selected" : ""}>Godot — .tpsheet</option></select></div>
-      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="atExportPng" disabled>Export PNG</button><button type="button" class="btn-ghost" id="atExportManifest" disabled>Export manifest</button></div>
-      <div class="dim" style="margin-top:8px">Identical frames are packed once and listed under every name in the manifest.</div>`;
-    wireAtlas();
-  } else if (cat === "normalmap") {
-    const N = nmState();
-    box.innerHTML = `
-      <div class="field-label">Normal Map Lab <span class="dim">(100% offline)</span></div>
-      <p class="dim" style="margin:2px 0 8px">Normal Map Lab — turn a flat sprite into a lit one. Normal, AO and specular maps in your browser; wrap-aware so textures stay seamless.</p>
-      <div class="row"><button type="button" class="btn-ghost" id="nmSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="nmPick" style="text-align:center">Upload image</button><input type="file" id="nmFile" accept="image/*" hidden></div>
-      <div class="field-label">Map</div>
-      <div class="seg cols4" id="nmViewSeg">
-        ${[["normal", "Normal"], ["lit", "Lit"], ["ao", "AO"], ["spec", "Spec"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === N.view ? " active" : ""}" data-nmview="${v}">${lbl}</button>`).join("")}
-      </div>
-      <div class="field-label">Height from</div>
-      <div class="seg" id="nmHeightSeg" style="grid-template-columns:repeat(2,minmax(0,1fr))"><button type="button" class="seg-btn${N.alphaMode ? "" : " active"}" data-nmheight="lum">Brightness</button><button type="button" class="seg-btn${N.alphaMode ? " active" : ""}" data-nmheight="alpha">Alpha silhouette</button></div>
-      <div class="sl-row"><span class="dim">strength</span><input type="range" id="nmStrength" min="0" max="200" value="${N.strength}" aria-label="normal strength"><span class="sl-val" id="nmStrengthVal">${N.strength}%</span></div>
-      <div class="sl-row"><span class="dim">smooth</span><input type="range" id="nmSmooth" min="0" max="6" value="${N.smooth}" aria-label="height smoothing"><span class="sl-val" id="nmSmoothVal">${N.smooth}px</span></div>
-      <label class="chk"><input type="checkbox" id="nmWrap"${N.wrap ? " checked" : ""}> wrap edges <span class="dim">(tileable textures stay seamless)</span></label>
-      <div class="field-label">Green channel</div>
-      <div class="seg" id="nmFlipSeg" style="grid-template-columns:repeat(2,minmax(0,1fr))"><button type="button" class="seg-btn${N.flipY ? "" : " active"}" data-nmflip="gl">OpenGL (Y+)</button><button type="button" class="seg-btn${N.flipY ? " active" : ""}" data-nmflip="dx">DirectX (Y&minus;)</button></div>
-      <button type="button" class="btn-ghost nm-download" id="nmExport" disabled>Export PNG</button>
-      <div class="dim" style="margin-top:8px">Unity and Godot both read the normal map directly; pick DirectX (Y&minus;) if your lighting looks upside-down.</div>`;
-    wireNormalmap();
-  } else if (cat === "tiler") {
-    const T = tlState();
-    box.innerHTML = `
-      <div class="field-label">Seamless Tiler <span class="dim">(100% offline)</span></div>
-      <p class="dim" style="margin:2px 0 8px">Seamless Tiler — make any texture repeat without visible seams. Best on organic and soft textures; hard geometric patterns will still show.</p>
-      <div class="row"><button type="button" class="btn-ghost" id="tlSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="tlPick" style="text-align:center">Upload texture</button><input type="file" id="tlFile" accept="image/*" hidden></div>
-      <div class="field-label">View</div>
-      <div class="seg" id="tlViewSeg" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-        ${[["single", "Single"], ["offset", "Offset"], ["grid", "3\u00D73"]].map(([v, lbl]) => `<button type="button" class="seg-btn${v === T.view ? " active" : ""}" data-tlview="${v}">${lbl}</button>`).join("")}
-      </div>
-      <div class="sl-row"><span class="dim">heal</span><input type="range" id="tlStrength" min="0" max="100" value="${T.strength}" aria-label="seam heal strength"><span class="sl-val" id="tlStrengthVal">${T.strength}%</span></div>
-      <button type="button" class="btn-ghost tl-download" id="tlExport" disabled>Export PNG</button>
-      <div class="dim" style="margin-top:8px">Offset shifts the texture by half, so the seams land in the middle where you can see them. Heal blends the edges together until the 3&times;3 preview repeats clean. Export is the healed texture at full size.</div>`;
-    wireTiler();
-  } else if (cat === "palette") {
-    const P = plState();
-    box.innerHTML = `
-      <div class="field-label">Palette Lab <span class="dim">(100% offline)</span></div>
-      <p class="dim" style="margin:2px 0 8px">Palette Lab — pull a sprite's colors out, swap them, spin off recolor variants for teams, tiers and skins. All in your browser.</p>
-      <div class="row"><button type="button" class="btn-ghost" id="plSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="plPick" style="text-align:center">Upload sprite</button><input type="file" id="plFile" accept="image/*" hidden></div>
-      <div class="field-label">Colors <span class="dim">(click one to pick it)</span></div>
-      <div class="pl-swatches" id="plSwatches"><span class="dim">no sprite loaded yet</span></div>
-      <div class="field-label">Swap</div>
-      <div class="row"><span class="pl-fromchip" id="plFromChip"></span><span class="dim" id="plFromHex">pick a color above</span><span class="dim">&rarr;</span><input type="color" id="plTo" value="${P.toHex}" aria-label="swap to this color"><button type="button" class="btn-ghost" id="plApply">Apply swap</button></div>
-      <div class="sl-row"><span class="dim">tolerance</span><input type="range" id="plTol" min="0" max="64" value="${P.tolerance}" aria-label="swap tolerance"><span class="sl-val" id="plTolVal">${P.tolerance}</span></div>
-      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="plUndo">Undo</button></div>
-      <div class="field-label">Variants <span class="dim">(palette hue spins)</span></div>
-      <div class="pl-variants" id="plVariants"><span class="dim">load a sprite first</span></div>
-      <button type="button" class="btn-ghost pl-download" id="plExport" disabled>Export PNG</button>
-      <div class="row" style="margin-top:8px"><button type="button" class="btn-ghost" id="plGpl" disabled>Palette .gpl</button><button type="button" class="btn-ghost" id="plJson" disabled>Palette .json</button></div>
-      <div class="dim" style="margin-top:8px">Transparent pixels are never touched. Tolerance feathers the swap at the edges, so anti-aliased outlines don't fringe.</div>`;
-    wirePalette();
-  } else if (cat === "gif") {
-    const G = gfState();
-    box.innerHTML = `
-      <div class="field-label">GIF Sheet <span class="dim">(100% offline)</span></div>
-      <p class="dim" style="margin:2px 0 8px">GIF Sheet — turn an animated GIF into a sprite sheet, frames and timings included. Decoded right in your browser; nothing is uploaded.</p>
-      <div class="row"><button type="button" class="btn-ghost" id="gfSample" style="text-align:center">Try the sample</button><button type="button" class="btn-ghost" id="gfPick" style="text-align:center">Upload GIF</button><input type="file" id="gfFile" accept="image/gif,.gif" hidden></div>
-      <div class="field-label">Sheet layout</div>
-      <div class="row"><label class="dim"><input type="checkbox" id="gfAuto" ${G.autoCols ? "checked" : ""}> auto columns</label><span class="dim">columns</span><input type="number" class="num" id="gfCols" min="1" max="64" value="${G.cols}" ${G.autoCols ? "disabled" : ""}></div>
-      <div class="dim" style="margin-top:4px">Auto lays the frames out near-square. The JSON export carries every frame's rect and duration in ms, ready for an engine.</div>
-      <button type="button" class="btn-ghost gf-download" id="gfExport" disabled>Export PNG</button>
-      <button type="button" class="btn-ghost" id="gfJson" style="width:100%;margin-top:8px;text-align:center" disabled>Export JSON manifest</button>`;
-    wireGif();
   } else {
     box.innerHTML = `
       <div class="field-label">Effect</div><div class="row"><select id="pType" class="grow">
@@ -371,14 +195,6 @@ function renderParams() {
     effect: "fiery explosion with smoke",
     pixelart: "not used — upload an image instead",
     slicer: "not used — upload a sheet instead",
-    draglab: "not used — upload a photo instead",
-    cutout: "not used — upload a photo instead",
-    upscale: "not used — upload an image instead",
-    atlas: "not used — drop images in instead",
-    normalmap: "not used — drop an image in instead",
-    tiler: "not used — drop a texture in instead",
-    palette: "not used — drop a sprite in instead",
-    gif: "not used — drop a GIF in instead",
   };
   $("#prompt").placeholder = "e.g. " + prompts[cat];
 
@@ -864,23 +680,8 @@ async function aiGenerateImage(prompt, w, h, onStatus) {
   if (aiKeyFor("pol-flux")) chain.splice(2, 0, "pol-flux");
   let lastErr = null;
   let fluxDetour = false;
-  mpHealth(); /* warm the health cache — the skip below only ever reads
-   * data that is already fresh; it never waits on this fetch */
   for (let i = 0; i < chain.length; i++) {
     const mid = chain[i];
-    /* a Horde model with zero workers online cannot answer at all —
-     * when fresh health data says so, skip it up front instead of
-     * burning a queue wait on it */
-    const hp = AI_PROVIDERS[mid];
-    const hh = hp && hp.hordeModel ? mpCachedHealth(hp.hordeModel) : null;
-    if (hh && hh.workers === 0) {
-      lastErr = new Error(AI_MODEL_NAMES[mid] + " has no workers online right now");
-      if (chain[i + 1]) {
-        onStatus(`auto: ${AI_MODEL_NAMES[mid]} has no workers online — skipping to ${AI_MODEL_NAMES[chain[i + 1]]}…`);
-        setStatusBar("warn");
-      }
-      continue;
-    }
     try {
       if (i > 0) onStatus(`auto: switched to ${AI_MODEL_NAMES[mid]}`);
       return await aiGenerateWith(mid, prompt, w, h, onStatus);
@@ -920,75 +721,6 @@ async function aiGenerateImage(prompt, w, h, onStatus) {
  * listener (state save, key row, notes, 3D description) keeps working.
  * The popup is portaled to <body>: position:fixed inside the wizard's
  * animated ancestors would render offset. */
-/* ===== Horde health board + favourite models (HUB roadmap Phase 5) =====
- * Health: GET https://aihorde.net/api/v2/status/models is public and
- * keyless — one entry per model: {name, count (workers online), queued,
- * eta (average wait, seconds)}. Cached for 60s; the model popup kicks a
- * refresh when it opens and re-renders its rows when data lands. No data
- * (or a failed fetch) renders nothing extra — the board never invents
- * numbers. Rows join to providers through AI_PROVIDERS[id].hordeModel. */
-const MP_HEALTH = { at: 0, map: null, pending: false };
-const MP_HEALTH_TTL = 60 * 1000;
-function mpHealthMapFrom(list) {
-  const map = {};
-  if (!Array.isArray(list)) return map;
-  list.forEach((m) => {
-    if (!m || typeof m.name !== "string") return;
-    map[m.name] = {
-      workers: typeof m.count === "number" ? m.count : 0,
-      eta: typeof m.eta === "number" ? m.eta : 0
-    };
-  });
-  return map;
-}
-function mpCachedHealth(hordeModel) {
-  if (!MP_HEALTH.map || Date.now() - MP_HEALTH.at > MP_HEALTH_TTL) return null;
-  return MP_HEALTH.map[hordeModel] || null;
-}
-let mpRerender = null; // wireModelPicker sets this while its popup is open
-function mpHealth() {
-  if (MP_HEALTH.pending) return;
-  if (MP_HEALTH.map && Date.now() - MP_HEALTH.at <= MP_HEALTH_TTL) return;
-  MP_HEALTH.pending = true;
-  fetch("https://aihorde.net/api/v2/status/models")
-    .then((r) => { if (!r.ok) throw new Error("health HTTP " + r.status); return r.json(); })
-    .then((list) => {
-      MP_HEALTH.map = mpHealthMapFrom(list);
-      MP_HEALTH.at = Date.now();
-      if (mpOpenFor && mpRerender) mpRerender();
-    })
-    .catch(() => { MP_HEALTH.at = Date.now(); /* stay silent — the next open after the TTL retries */ })
-    .finally(() => { MP_HEALTH.pending = false; });
-}
-
-/* Favourites: pinned provider ids, shared by both pickers (they render
- * through the same popup). Stored as a JSON array of ids in localStorage
- * under "m4ster.aiFavs"; every read is defensive, like the rest of the
- * file's storage reads. */
-const AI_FAVS_KEY = "m4ster.aiFavs";
-function aiFavsParse(json) {
-  try {
-    const v = JSON.parse(json || "[]");
-    if (!Array.isArray(v)) return [];
-    return v.filter((x) => typeof x === "string");
-  } catch (e) { return []; }
-}
-function aiFavsToggleIn(favs, id) {
-  const out = favs.slice();
-  const i = out.indexOf(id);
-  if (i >= 0) out.splice(i, 1); else out.push(id);
-  return out;
-}
-function aiFavsLoad() {
-  try { return aiFavsParse(localStorage.getItem(AI_FAVS_KEY)); }
-  catch (e) { return []; }
-}
-function aiFavsToggle(id) {
-  const next = aiFavsToggleIn(aiFavsLoad(), id);
-  try { localStorage.setItem(AI_FAVS_KEY, JSON.stringify(next)); } catch (e) {}
-  return next;
-}
-
 function mpParseOption(opt, groupLabel) {
   const raw = opt.textContent.trim().replace(/^⚡\s*/, "");
   const parts = raw.split(" — ");
@@ -1005,12 +737,7 @@ function mpParseOption(opt, groupLabel) {
   else if (opt.value === "auto") chip = "AUTO";
   else if (/free key/i.test(groupLabel || "")) chip = "FREE KEY";
   else if (tm) chip = "~" + tm[1];
-  /* live Horde health rides along when fresh data exists — 3D provider
-   * ids are not in AI_PROVIDERS, so their rows get null and render
-   * exactly as before */
-  const hprov = AI_PROVIDERS[opt.value];
-  const health = hprov && hprov.hordeModel ? mpCachedHealth(hprov.hordeModel) : null;
-  return { value: opt.value, name: name, source: source, desc: desc, chip: chip, health: health };
+  return { value: opt.value, name: name, source: source, desc: desc, chip: chip };
 }
 function mpSections(sel) {
   const secs = [];
@@ -1026,18 +753,6 @@ function mpSections(sel) {
       pushOpt(child.value === "auto" ? "Auto" : "Models", child);
     }
   });
-  /* pinned models get a Favourites section at the top — the same rows
-   * also stay in their normal sections below */
-  const favs = aiFavsLoad();
-  if (favs.length) {
-    const favRows = [];
-    favs.forEach((id) => {
-      let found = null;
-      Array.prototype.forEach.call(sel.options, (opt) => { if (opt.value === id) found = opt; });
-      if (found) favRows.push(mpParseOption(found, ""));
-    });
-    if (favRows.length) secs.unshift({ label: "★ Favourites", rows: favRows });
-  }
   return secs;
 }
 let mpOpenFor = null; // { btn, sel } while the popup is open
@@ -1046,7 +761,6 @@ function mpClose() {
   if (pop) pop.hidden = true;
   if (mpOpenFor) mpOpenFor.btn.setAttribute("aria-expanded", "false");
   mpOpenFor = null;
-  mpRerender = null;
 }
 /* ===== My Assets — Meshy copy (TEST build) =====
  * Meshy's Assets page: search, All / Images / Models / Animation
@@ -1087,8 +801,6 @@ function assetsDownload(item) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  if (item.kind === "model") toastExport(a.download);
-  else toastExport(a.download, flDataUrlBytes(a.href));
 }
 function renderAssets() {
   const grid = document.getElementById("assetsGrid");
@@ -1158,21 +870,9 @@ function renderAssets() {
     grid.appendChild(card);
   });
   if (empty) {
-    const total = assetsItems().length;
     empty.hidden = items.length > 0;
-    if (items.length === 0 && total > 0) empty.textContent = assetsState.query ? "No assets match that search." : "No assets in this view yet.";
+    if (items.length === 0 && assetsItems().length > 0) empty.textContent = "No assets match that filter.";
     else if (items.length === 0) empty.textContent = "Nothing here yet — generate a sprite or a mesh and it shows up here.";
-    /* v8.13: the empty state always carries its next step — start
-     * generating when the library is empty, reset the view when a
-     * filter/search is what hid everything */
-    const acts = document.getElementById("assetsEmptyActions");
-    if (acts) {
-      acts.hidden = items.length > 0;
-      const goBtn = document.getElementById("assetsGoSprite");
-      const allBtn = document.getElementById("assetsShowAll");
-      if (goBtn) goBtn.hidden = total > 0;
-      if (allBtn) allBtn.hidden = total === 0;
-    }
   }
   assetsSyncFoot();
 }
@@ -1193,21 +893,6 @@ function wireAssets() {
   }));
   const search = document.getElementById("assetsSearch");
   if (search) search.addEventListener("input", () => { assetsState.query = search.value.trim(); renderAssets(); });
-  const showAllBtn = document.getElementById("assetsShowAll");
-  if (showAllBtn) showAllBtn.addEventListener("click", () => {
-    assetsState.filter = "all";
-    assetsState.query = "";
-    if (search) search.value = "";
-    document.querySelectorAll(".assets-fbtn[data-f]").forEach((x) => x.classList.toggle("active", x.getAttribute("data-f") === "all"));
-    renderAssets();
-  });
-  const goSpriteBtn = document.getElementById("assetsGoSprite");
-  if (goSpriteBtn) goSpriteBtn.addEventListener("click", () => {
-    const f = document.getElementById("flip2d");
-    if (f) f.click();
-    const target = document.getElementById("tool");
-    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
   const batch = document.getElementById("assetsBatch");
   if (batch) batch.addEventListener("change", () => {
     assetsState.batch = batch.checked;
@@ -1270,84 +955,52 @@ function wireModelPicker(btnId, selId) {
     const list = pop.querySelector(".mp-list");
     const titleEl = pop.querySelector(".mp-title");
     if (titleEl) titleEl.textContent = btn.getAttribute("data-mp-title") || "Model Preference";
-    const renderList = () => {
-      const favs = aiFavsLoad();
-      list.innerHTML = "";
-      mpSections(sel).forEach((sec) => {
-        const h = document.createElement("div");
-        h.className = "mp-sec";
-        h.textContent = sec.label;
-        list.appendChild(h);
-        sec.rows.forEach((r) => {
-          const row = document.createElement("button");
-          row.type = "button";
-          row.className = "mp-row" + (r.value === sel.value ? " sel" : "");
-          const ic = document.createElement("span");
-          ic.className = "mp-ic";
-          ic.textContent = r.value === "auto" ? "⚡" : r.source.indexOf("Horde") >= 0 ? "◆" : r.chip === "FREE KEY" ? "●" : "▲";
-          const main = document.createElement("span");
-          main.className = "mp-main";
-          const nm = document.createElement("span");
-          nm.className = "mp-rname";
-          nm.textContent = (r.source ? r.source + " · " : "") + r.name;
-          if (r.chip) {
-            const ch = document.createElement("span");
-            ch.className = "mp-rchip";
-            ch.textContent = r.chip;
-            nm.appendChild(ch);
-          }
-          if (r.health) {
-            const hs = document.createElement("span");
-            hs.className = "mp-health";
-            const dot = document.createElement("span");
-            dot.className = "mp-dot " + (r.health.workers >= 3 ? "ok" : r.health.workers >= 1 ? "warn" : "off");
-            hs.appendChild(dot);
-            const htx = document.createElement("span");
-            htx.textContent = (r.health.workers === 1 ? "1 worker" : r.health.workers + " workers") +
-              " · " + (r.health.eta > 0 ? "~" + Math.round(r.health.eta) + "s wait" : "ready now");
-            hs.appendChild(htx);
-            nm.appendChild(hs);
-          }
-          main.appendChild(nm);
-          if (r.desc) {
-            const ds = document.createElement("span");
-            ds.className = "mp-rdesc";
-            ds.textContent = r.desc;
-            main.appendChild(ds);
-          }
-          const star = document.createElement("span");
-          const pinned = favs.indexOf(r.value) >= 0;
-          star.className = "mp-star" + (pinned ? " on" : "");
-          star.textContent = pinned ? "★" : "☆";
-          star.setAttribute("role", "button");
-          star.setAttribute("aria-pressed", String(pinned));
-          star.setAttribute("aria-label", pinned ? "Unpin " + r.name + " from favourites" : "Pin " + r.name + " to favourites");
-          star.title = pinned ? "Unpin from favourites" : "Pin to favourites";
-          star.addEventListener("click", (ev) => {
-            ev.stopPropagation(); /* a pin is not a pick: no select, no close */
-            aiFavsToggle(r.value);
-            renderList();
-          });
-          const ck = document.createElement("span");
-          ck.className = "mp-check";
-          ck.textContent = r.value === sel.value ? "✓" : "";
-          row.appendChild(ic);
-          row.appendChild(main);
-          row.appendChild(star);
-          row.appendChild(ck);
-          row.addEventListener("click", () => {
-            sel.value = r.value;
-            sel.dispatchEvent(new Event("change", { bubbles: true }));
-            refreshTrigger();
-            mpClose();
-          });
-          list.appendChild(row);
+    list.innerHTML = "";
+    mpSections(sel).forEach((sec) => {
+      const h = document.createElement("div");
+      h.className = "mp-sec";
+      h.textContent = sec.label;
+      list.appendChild(h);
+      sec.rows.forEach((r) => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "mp-row" + (r.value === sel.value ? " sel" : "");
+        const ic = document.createElement("span");
+        ic.className = "mp-ic";
+        ic.textContent = r.value === "auto" ? "⚡" : r.source.indexOf("Horde") >= 0 ? "◆" : r.chip === "FREE KEY" ? "●" : "▲";
+        const main = document.createElement("span");
+        main.className = "mp-main";
+        const nm = document.createElement("span");
+        nm.className = "mp-rname";
+        nm.textContent = (r.source ? r.source + " · " : "") + r.name;
+        if (r.chip) {
+          const ch = document.createElement("span");
+          ch.className = "mp-rchip";
+          ch.textContent = r.chip;
+          nm.appendChild(ch);
+        }
+        main.appendChild(nm);
+        if (r.desc) {
+          const ds = document.createElement("span");
+          ds.className = "mp-rdesc";
+          ds.textContent = r.desc;
+          main.appendChild(ds);
+        }
+        const ck = document.createElement("span");
+        ck.className = "mp-check";
+        ck.textContent = r.value === sel.value ? "✓" : "";
+        row.appendChild(ic);
+        row.appendChild(main);
+        row.appendChild(ck);
+        row.addEventListener("click", () => {
+          sel.value = r.value;
+          sel.dispatchEvent(new Event("change", { bubbles: true }));
+          refreshTrigger();
+          mpClose();
         });
+        list.appendChild(row);
       });
-    };
-    renderList();
-    mpRerender = renderList;
-    mpHealth(); /* opening the popup refreshes the health board; fresh data re-renders the rows */
+    });
     pop.hidden = false;
     mpOpenFor = { btn: btn, sel: sel };
     btn.setAttribute("aria-expanded", "true");
@@ -1842,11 +1495,7 @@ function showRetry(msg) {
 
 function setBusy(b) {
   state.busy = b;
-  document.querySelectorAll(".generate").forEach(x => {
-    x.disabled = b;
-    if (x.dataset.label === undefined) x.dataset.label = x.textContent;
-    x.textContent = b ? "GENERATING…" : x.dataset.label;
-  });
+  document.querySelectorAll(".generate").forEach(x => { x.disabled = b; });
 }
 
 /* ---------------- atlas packing + manifest ----------------
@@ -1930,7 +1579,7 @@ function renderFramesUI() {
       fc.drawImage(r.frames[fi], 0, 0);
       cv.title = "click to download this frame";
       cv.style.cursor = "pointer";
-      cv.onclick = () => { flSetExportAction("Open My Assets", flOpenAssets); downloadCanvas(cv, `m4ster-${r.name}-frame${oi}.png`); };
+      cv.onclick = () => downloadCanvas(cv, `m4ster-${r.name}-frame${oi}.png`);
       card.appendChild(cv);
       const nm = document.createElement("span");
       nm.className = "fname";
@@ -1969,29 +1618,9 @@ function moveFrame(ri, oi, dir) {
 
 let previewRAF = 0, previewRow = 0, previewT = 0;
 
-/* perf: both preview loops draw into the same #preview canvas. An
- * IntersectionObserver parks whichever loop is live while the canvas is
- * covered by another mode or scrolled off-screen, and resumes it when it
- * comes back — the drawn frames themselves are unchanged. previewGen
- * keeps a parked loop's resume from reviving after the other loop (or a
- * restart of the same one) has taken over the canvas. */
-let previewVisible = true, previewResume = null, previewGen = 0, previewWatching = false;
-function watchPreviewCanvas(pc) {
-  if (previewWatching || !pc || !("IntersectionObserver" in window)) return;
-  previewWatching = true;
-  new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      previewVisible = e.isIntersecting;
-      if (previewVisible && previewResume) { const r = previewResume; previewResume = null; r(); }
-    }
-  }).observe(pc);
-}
-
 function startPreview() {
   cancelAnimationFrame(previewRAF);
   cancelAnimationFrame(slicerRAF);
-  const pvGen = ++previewGen;
-  previewResume = null;
   const sel = $("#previewState");
   sel.innerHTML = "";
   sel.disabled = false;
@@ -2007,22 +1636,13 @@ function startPreview() {
   const pc = $("#preview");
   const pctx = pc.getContext("2d");
   pctx.imageSmoothingEnabled = false;
-  /* perf: element refs resolved once per loop instead of DOM queries on
-   * every tick */
-  const fpsEl = $("#previewFps"), metaEl = $("#previewMeta");
-  watchPreviewCanvas(pc);
   let last = performance.now();
 
   function tick(now) {
-    if (!previewVisible) {   // covered / off-screen: park until the observer resumes us
-      previewRAF = 0;
-      previewResume = () => { if (pvGen === previewGen) tick(performance.now()); };
-      return;
-    }
     previewRAF = requestAnimationFrame(tick);
     const r = state.rows[previewRow];
     if (!r) return;
-    const fps = +fpsEl.value || 8;
+    const fps = +$("#previewFps").value || 8;
     if (now - last < 1000 / fps) return;
     last = now;
     previewT = (previewT + 1) % r.order.length;
@@ -2038,7 +1658,7 @@ function startPreview() {
       for (let iy = 0; iy < 3; iy++)
         for (let ix = 0; ix < 3; ix++)
           pctx.drawImage(f, ox + ix * dw, oy + iy * dh, dw, dh);
-      metaEl.textContent = `· ${r.name} · 3×3 tile check`;
+      $("#previewMeta").textContent = `· ${r.name} · 3×3 tile check`;
     } else {
       const s = Math.min(pc.width / f.width, pc.height / f.height, 8);
       const dw = Math.max(1, Math.round(f.width * s)), dh = Math.max(1, Math.round(f.height * s));
@@ -2046,101 +1666,13 @@ function startPreview() {
       if (state.flipX) { pctx.translate(pc.width, 0); pctx.scale(-1, 1); }
       pctx.drawImage(f, (pc.width - dw) / 2, (pc.height - dh) / 2, dw, dh);
       pctx.restore();
-      metaEl.textContent = `· ${r.name} · frame ${previewT + 1}/${r.order.length}`;
+      $("#previewMeta").textContent = `· ${r.name} · frame ${previewT + 1}/${r.order.length}`;
     }
   }
   tick(last);
 }
 
 /* ---------------- export ---------------- */
-
-/* ---------- v8.13: shared export confirmation toast ----------
- * Every download in the hub lands here: one glass toast naming the
- * file and its real size, auto-dismissing, click to dismiss. Rapid
- * successive exports (sheet + manifest, a run of cells) coalesce into
- * one toast that counts the burst instead of stacking. A caller with
- * a natural next step registers it once via flSetExportAction; the
- * next toast carries it as its single action button. */
-function flFmtSize(n) {
-  return n >= 1048576 ? (n / 1048576).toFixed(2) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
-}
-/* exact decoded byte count of a base64 data URL (what the file
- * actually weighs — the helpers below already hold the payload) */
-function flDataUrlBytes(u) {
-  const i = u.indexOf(",");
-  if (i < 0) return 0;
-  const b = u.slice(i + 1);
-  const pad = b.endsWith("==") ? 2 : b.endsWith("=") ? 1 : 0;
-  return Math.max(0, Math.floor(b.length * 3 / 4) - pad);
-}
-let flToastTimer = null, flToastBurst = 0, flToastLastAt = 0;
-let flNextAction = null, flToastAction = null;
-function flSetExportAction(label, fn) { flNextAction = label && fn ? { label, fn } : null; }
-function flOpenAssets() {
-  renderAssets();
-  const s = document.getElementById("labAssets");
-  if (s) s.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-function flToastEl() {
-  let t = document.getElementById("flToast");
-  if (t) return t;
-  t = document.createElement("div");
-  t.id = "flToast";
-  t.className = "fl-toast";
-  t.hidden = true;
-  t.setAttribute("role", "status");
-  const msg = document.createElement("span");
-  msg.className = "fl-toast-msg";
-  const act = document.createElement("button");
-  act.type = "button";
-  act.className = "fl-toast-act";
-  act.hidden = true;
-  t.appendChild(msg);
-  t.appendChild(act);
-  t.addEventListener("click", (e) => { if (e.target !== act) flToastHide(); });
-  document.body.appendChild(t);
-  return t;
-}
-function flToastHide() {
-  const t = document.getElementById("flToast");
-  if (!t) return;
-  t.classList.remove("show");
-  clearTimeout(flToastTimer);
-  setTimeout(() => { t.hidden = true; }, 320);
-}
-function toastExport(name, sizeBytes) {
-  const t = flToastEl();
-  const msg = t.querySelector(".fl-toast-msg");
-  const act = t.querySelector(".fl-toast-act");
-  const now = Date.now();
-  flToastBurst = now - flToastLastAt < 900 ? flToastBurst + 1 : 1;
-  flToastLastAt = now;
-  const size = typeof sizeBytes === "number" && sizeBytes > 0 ? " · " + flFmtSize(sizeBytes) : "";
-  msg.textContent = flToastBurst > 1
-    ? "Exported " + flToastBurst + " files — last: " + name + size
-    : "Exported " + name + size;
-  if (flNextAction) { flToastAction = flNextAction; flNextAction = null; }
-  else if (flToastBurst === 1) flToastAction = null;
-  if (flToastAction) {
-    const a = flToastAction;
-    act.textContent = a.label;
-    act.hidden = false;
-    act.onclick = () => { flToastHide(); a.fn(); };
-  } else {
-    act.hidden = true;
-    act.onclick = null;
-  }
-  t.hidden = false;
-  void t.offsetWidth;
-  t.classList.add("show");
-  clearTimeout(flToastTimer);
-  flToastTimer = setTimeout(flToastHide, 4500);
-}
-/* result-stage skeleton toggle (v8.13) */
-function flSkel(id, on) {
-  const s = document.getElementById(id);
-  if (s) s.hidden = !on;
-}
 
 function downloadCanvas(canvas, filename) {
   const a = document.createElement("a");
@@ -2149,7 +1681,6 @@ function downloadCanvas(canvas, filename) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  toastExport(filename, flDataUrlBytes(a.href));
 }
 
 function downloadJSON(obj, filename) {
@@ -2160,25 +1691,21 @@ function downloadJSON(obj, filename) {
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-  toastExport(filename, blob.size);
 }
 
 function wireExport() {
-  /* pipeline exports come from generated rows — the natural next step
-   * is the assets view they live in (v8.13 toast action) */
-  const withAssets = (fn) => () => { flSetExportAction("Open My Assets", flOpenAssets); fn(); };
-  $("#dlSheet").onclick = withAssets(() => state.atlas && downloadCanvas(state.atlas.canvas, state.atlas.pngName || "m4ster-sprite-sheet.png"));
-  $("#dlJson").onclick = withAssets(() => state.atlas && downloadJSON(state.atlas.manifest, state.atlas.jsonName || "m4ster-sprite-atlas.json"));
-  $("#dlAnim").onclick = withAssets(() => {
+  $("#dlSheet").onclick = () => state.atlas && downloadCanvas(state.atlas.canvas, state.atlas.pngName || "m4ster-sprite-sheet.png");
+  $("#dlJson").onclick = () => state.atlas && downloadJSON(state.atlas.manifest, state.atlas.jsonName || "m4ster-sprite-atlas.json");
+  $("#dlAnim").onclick = () => {
     // one button, both files: the picked animation as sheet PNG + manifest JSON
     if (!state.atlas) return;
     downloadCanvas(state.atlas.canvas, state.atlas.pngName || "m4ster-sprite-sheet.png");
     setTimeout(() => downloadJSON(state.atlas.manifest, state.atlas.jsonName || "m4ster-sprite-atlas.json"), 400);
-  });
+  };
   const godotBtn = $("#dlGodot");
-  if (godotBtn) godotBtn.onclick = withAssets(() => { downloadGodotPack().catch(e => stageMsg("Godot export failed: " + humanErr(e), true)); });
+  if (godotBtn) godotBtn.onclick = () => { downloadGodotPack().catch(e => stageMsg("Godot export failed: " + e.message, true)); };
   const unityBtn = $("#dlUnity");
-  if (unityBtn) unityBtn.onclick = withAssets(() => { downloadUnityPack().catch(e => stageMsg("Unity export failed: " + humanErr(e), true)); });
+  if (unityBtn) unityBtn.onclick = () => { downloadUnityPack().catch(e => stageMsg("Unity export failed: " + e.message, true)); };
   $("#dlFrames").onclick = () => {
     if (state.slicer && state.slicer.selection.length) {
       // slicer: export the picked frames in order
@@ -2191,7 +1718,6 @@ function wireExport() {
       return;
     }
     if (!state.rows.length) return;
-    flSetExportAction("Open My Assets", flOpenAssets);
     let delay = 0;
     state.rows.forEach(r => {
       r.order.forEach((fi, oi) => {
@@ -2637,101 +2163,6 @@ Use it:
 Why a builder script? Raw .anim files reference sprites by internal IDs
 that only Unity can assign. The script resolves sprites by name inside
 the editor, so clips can never arrive with "Missing (Sprite)".
-`;
-
-const MESH_README = `m4ster FrameLab — mesh import guide
-====================================
-
-What you downloaded
--------------------
-Your mesh comes out of the 3D studio as a GLB (glTF binary) — one file
-with the geometry, materials and textures embedded. From the viewer you
-can also re-export the loaded mesh as OBJ or FBX:
-
-- GLB   the full package. Textures travel inside the file. This is the
-        one to keep and the one every engine below reads directly.
-- OBJ   geometry-first: vertices, normals, UVs. No embedded textures —
-        treat it as the shape, and texture it in your engine.
-- FBX   geometry + vertex color, re-exported from the loaded mesh.
-        Handy for tools that prefer FBX; for textures, GLB still wins.
-
-Start from the GLB unless a tool in your pipeline insists otherwise.
-
-Unity (2022.2 or newer)
------------------------
-1. Drag the .glb straight into your project's Assets folder — Unity
-   imports glTF natively and builds the materials for you.
-2. Drag the imported model into the scene.
-3. If it arrives huge or tiny, select the import in the Project view
-   and set its scale on the Model tab, or scale the scene object —
-   generated meshes do not share one fixed real-world size.
-Older Unity versions: import a free glTF importer package, or open the
-GLB in Blender and export FBX.
-
-Unreal Engine
--------------
-1. In the Content Browser: Import, and pick the .glb. The built-in
-   glTF importer brings geometry and PBR materials across.
-2. Leave "Import Uniform Scale" at 1 first and check the mesh in the
-   viewport; adjust the scale on the import dialog or the actor if the
-   proportions look off against your level.
-3. Textures land as regular Texture2D assets next to the mesh.
-
-Godot 4
--------
-1. Copy the .glb into your project folder (in the FileSystem dock or
-   on disk). Godot imports it automatically as a scene.
-2. Drag the imported scene into your tree — it arrives as a node with
-   the mesh and materials ready.
-3. Rescale the node if needed; Godot's unit is the metre, generated
-   meshes are not guaranteed to be true to it.
-
-Blender
--------
-1. File > Import > glTF 2.0 (.glb/.gltf), pick the file.
-2. Geometry, materials and textures come across intact — the cleanest
-   place to clean up, retopologise or re-export to anything else
-   (FBX for older engines, for example).
-
-Scale and orientation
----------------------
-glTF is Y-up and right-handed, and every engine above converts on
-import, so the model should stand upright with no work from you. Two
-things genuinely vary between generated meshes:
-
-- Absolute size. One model's "1 unit" is not another's. Check the
-  bounding box against a known reference (a 2 m doorway, a character)
-  and set the import scale once.
-- Pivot. The origin sits wherever the generator centred the shape,
-  usually the middle of the model. If a game object needs its feet on
-  the ground, offset it in the engine or move the origin in Blender.
-
-Textures
---------
-GLB carries its PBR textures inside the file — base color, and where
-the model produced them, normal / roughness / metallic maps. They
-import with the mesh everywhere above; there is nothing to relink.
-
-One exception: meshes made by Hunyuan3D-2 Mini Turbo (including the
-direct Text to 3D route) are SHAPE ONLY. That provider builds geometry
-with no texture stage, so the mesh arrives as a plain surface in a
-neutral material. That is expected, not a broken export — assign your
-own materials, or vertex-paint it, and it is game-ready.
-
-Troubleshooting
----------------
-- Mesh imports but looks plain grey: it is a shape-only result (see
-  above) or the engine skipped material import — re-import the GLB and
-  keep the material options on.
-- Mesh is enormous or microscopic: import scale — see Scale above.
-- Mesh is dark or inside-out in the engine: open it in Blender, select
-  all faces in Edit Mode, Mesh > Normals > Recalculate Outside, then
-  re-export.
-- A tool refuses the GLB: open it in Blender (it reads every GLB) and
-  export FBX or OBJ from there.
-- Textures exist but look soft: the provider generated them at its own
-  fixed resolution — pick the Ultra 2K / 4K resolution in the studio
-  before generating when the model supports it.
 `;
 
 async function downloadGodotPack() {
@@ -3751,7 +3182,6 @@ async function runPipeline() {
   setStatusBar("");
   resetSteps();
   hideRetry();
-  flSkel("stageSkel", true); /* shape placeholder until the first real frame lands */
   enableExport(false);
   state.rows = []; state.originals = []; state.atlas = null;
   state.revision = Date.now().toString(36);
@@ -3915,12 +3345,11 @@ async function runPipeline() {
       showRetry(msg);
       setStatusBar("warn");
     } else {
-      stageMsg("FAILED: " + humanErr(e), true);
+      stageMsg("FAILED: " + e.message, true);
       showRetry("Extraction found nothing usable. Retry with a stricter prompt, lower the frame count, or pick a different background key.");
       setStatusBar("error");
     }
   } finally {
-    flSkel("stageSkel", false);
     setBusy(false);
   }
 }
@@ -4095,15 +3524,7 @@ function pxColorLabel(n) {
  * header (no step number), and a back button returns to the generator. */
 function syncToolChrome() {
   const tool = state.category === "pixelart" ? "Pixel Converter"
-             : state.category === "slicer" ? "Sprite Slicer"
-             : state.category === "draglab" ? "DragLab"
-             : state.category === "cutout" ? "Cutout Lab"
-             : state.category === "upscale" ? "Upscale Lab"
-             : state.category === "atlas" ? "Atlas Packer"
-             : state.category === "normalmap" ? "Normal Map Lab"
-             : state.category === "tiler" ? "Seamless Tiler"
-             : state.category === "palette" ? "Palette Lab"
-             : state.category === "gif" ? "GIF Sheet" : null;
+             : state.category === "slicer" ? "Sprite Slicer" : null;
   document.querySelectorAll(".ctl-group").forEach(g => {
     g.classList.toggle("tool-hidden", !!tool && g.id !== "ctlStep3");
   });
@@ -4117,20 +3538,6 @@ function syncToolChrome() {
   if (back) back.hidden = !tool;
 }
 
-/* the pixel side panel shows whenever the Pixel Converter lane is
- * open: the two figures once an image is loaded, a hint line until
- * then (the same empty-state pattern the Slicer readout uses) */
-function pxSyncSide() {
-  const side = $("#pixelSide");
-  if (!side) return;
-  const on = state.category === "pixelart";
-  const has = !!(state.pixelart && state.pixelart.src);
-  side.hidden = !on;
-  side.querySelectorAll(".px-fig").forEach(f => { f.hidden = !has; });
-  const e = $("#pxEmpty");
-  if (e) e.hidden = has;
-}
-
 function syncPixelMode() {
   const on = state.category === "pixelart";
   const aside = document.querySelector("aside.controls");
@@ -4138,13 +3545,15 @@ function syncPixelMode() {
   if (aside) aside.classList.toggle("mode-pixelart", on);
   if (stage) stage.classList.toggle("mode-pixelart", on);
   document.body.classList.toggle("mode-pixelart", on);
-  pxSyncSide();
+  const side = $("#pixelSide");
+  if (side) side.hidden = !(on && state.pixelart && state.pixelart.src);
   syncToolChrome();
 }
 
 function pxRender() {
   const P = pxState();
-  if (!P.src) { pxSyncSide(); return; }
+  const side = $("#pixelSide");
+  if (!P.src) { if (side) side.hidden = true; return; }
   const t0 = performance.now();
   P.out = pxConvert(P.src, { w: P.w, h: P.h, colors: P.colors, dither: P.dither });
   const ms = Math.round(performance.now() - t0);
@@ -4178,7 +3587,7 @@ function pxRender() {
 
   $("#pxOrigCap").textContent = `original · ${P.imgW} × ${P.imgH}`;
   $("#pxOutCap").textContent = `pixel art · ${P.w} × ${P.h} · ${pxColorLabel(P.colors)}${P.dither ? " · dithered" : ""}${tileInfo} · ${ms}ms`;
-  pxSyncSide();
+  side.hidden = false;
 }
 
 function pxDownloadArt() {
@@ -4481,7 +3890,7 @@ function slicerOverlay() {
     ctx.globalAlpha = 0.9;
     ctx.lineWidth = Math.max(1, Math.min(S.imgW, S.imgH) / 400);
     const fs = Math.max(10, Math.min(S.imgW, S.imgH) / 24);
-    ctx.font = `${fs}px "JetBrains Mono", monospace`;
+    ctx.font = `${fs}px monospace`;
     rects.forEach((rc, i) => {
       ctx.strokeRect(rc.x + 0.5, rc.y + 0.5, Math.max(1, rc.w - 1), Math.max(1, rc.h - 1));
       ctx.fillText(String(i + 1), rc.x + 4, rc.y + fs);
@@ -4585,8 +3994,6 @@ let slicerRAF = 0, slicerT = 0, slicerDir = 1;
 function slicerPreview() {
   cancelAnimationFrame(slicerRAF);
   cancelAnimationFrame(previewRAF);
-  const pvGen = ++previewGen;
-  previewResume = null;
   const S = state.slicer;
   const pc = $("#preview");
   if (!pc) return;
@@ -4604,33 +4011,10 @@ function slicerPreview() {
     $("#previewMeta").textContent = (S && S.sheet) ? "· pick frames above" : "";
     return;
   }
-  const metaEl = $("#previewMeta");
-  watchPreviewCanvas(pc);
-  /* perf: the frame array + max dims used to be rebuilt on EVERY rAF
-   * tick (60x/sec to draw at 8fps). They only change when the selection
-   * or the sliced pieces change, so cache them behind a cheap signature
-   * check; fps/playback are plain fields and still read live each tick. */
-  let cacheFr = null, cacheCw = 0, cacheCh = 0, cacheSel = null, cachePieces = null;
-  function slicerFrames() {
-    const selNow = S.selection;
-    if (cacheFr && cachePieces === S.pieces && cacheSel.length === selNow.length
-        && cacheSel.every((v, i) => v === selNow[i])) return cacheFr;
-    cacheFr = selNow.map(j => S.pieces[j].canvas);
-    cacheSel = selNow.slice();
-    cachePieces = S.pieces;
-    cacheCw = 0; cacheCh = 0;
-    for (const f of cacheFr) { cacheCw = Math.max(cacheCw, f.width); cacheCh = Math.max(cacheCh, f.height); }
-    return cacheFr;
-  }
   let last = performance.now();
   function tick(now) {
-    if (!previewVisible) {   // covered / off-screen: park until the observer resumes us
-      slicerRAF = 0;
-      previewResume = () => { if (pvGen === previewGen) tick(performance.now()); };
-      return;
-    }
     slicerRAF = requestAnimationFrame(tick);
-    const fr = slicerFrames();
+    const fr = S.selection.map(j => S.pieces[j].canvas);
     if (!fr.length) return;
     const fps = S.fps || 8;
     if (now - last < 1000 / fps) return;
@@ -4642,7 +4026,8 @@ function slicerPreview() {
       if (slicerT <= 0) { slicerT = 0; slicerDir = 1; }
     }
     else slicerT = (slicerT + 1) % fr.length;
-    const cw = cacheCw, ch = cacheCh;
+    let cw = 0, ch = 0;
+    for (const f of fr) { cw = Math.max(cw, f.width); ch = Math.max(ch, f.height); }
     const sc = Math.min(pc.width / cw, pc.height / ch, 8);
     const dw = Math.max(1, Math.round(cw * sc)), dh = Math.max(1, Math.round(ch * sc));
     const ox = (pc.width - dw) / 2, oy = (pc.height - dh) / 2;
@@ -4650,7 +4035,7 @@ function slicerPreview() {
     const f = fr[slicerT];
     const fw = Math.max(1, Math.round(f.width * sc)), fh = Math.max(1, Math.round(f.height * sc));
     pctx.drawImage(f, ox + Math.round((dw - fw) / 2), oy + dh - fh, fw, fh);
-    metaEl.textContent = `· slice · frame ${slicerT + 1}/${fr.length}`;
+    $("#previewMeta").textContent = `· slice · frame ${slicerT + 1}/${fr.length}`;
   }
   tick(last);
 }
@@ -4810,4216 +4195,6 @@ function wireSlicer() {
   syncSlicerMode();
 }
 
-/* ================= v8.2: DragLab — point-drag photo warp =================
- * FrameLab's own warp tool: click a photo to drop points, drag them, and
- * the picture pulls along. The math is Moving Least Squares (similarity
- * flavour, Schaefer et al. 2006) — a classic image-deformation recipe,
- * implemented here from scratch. No model, no server, no upload: the
- * photo never leaves the visitor's browser. */
-
-function dlState() {
-  if (!state.draglab) {
-    state.draglab = {
-      src: null, srcCv: null, imgW: 0, imgH: 0, points: [], name: "photo",
-      // v8.6 liquify brushes: mode picks which controls the panel shows;
-      // brush is a coarse grid of forward offsets painted by the brushes
-      // (null until the first dab); brushUndo holds per-stroke snapshots.
-      mode: "points", brush: null, brushUndo: [],
-      brushKind: "push", brushSize: 64, brushStrength: 60,
-    };
-  }
-  return state.draglab;
-}
-
-function syncDraglabMode() {
-  const on = state.category === "draglab";
-  const aside = document.querySelector("aside.controls");
-  const stage = document.querySelector("section.stage-panel");
-  if (aside) aside.classList.toggle("mode-draglab", on);
-  if (stage) stage.classList.toggle("mode-draglab", on);
-  document.body.classList.toggle("mode-draglab", on);
-  const sec = $("#draglab");
-  if (sec) sec.hidden = !on;
-  syncToolChrome();
-}
-
-/* Moving Least Squares, similarity flavour — as an inverse map.
- * For an OUTPUT pixel (x, y) this finds where it came from in the source.
- * Each point has a home (px, py) and a dragged-to spot (qx, qy); swapping
- * the two turns the forward deformation into a backward lookup, which is
- * what a renderer needs (no holes in the output). */
-/* perf: the warp math below writes into caller-owned scratch arrays
- * instead of allocating a fresh [x, y] (and weights array) per grid node
- * — same arithmetic, same order, zero per-node garbage. */
-let _dlW = [];                 // MLS weights scratch, grown to fit the point count
-const _dlM = [0, 0];           // dlInvMap scratch: point-warp result
-const _dlO = [0, 0];           // dlInvMap scratch: brush offset
-
-function dlMapPoint(x, y, pts, out) {
-  const n = pts.length;
-  if (n === 0) { out[0] = x; out[1] = y; return; }
-  if (n === 1) {
-    // a single point can only translate the whole picture
-    out[0] = x + pts[0].px - pts[0].qx; out[1] = y + pts[0].py - pts[0].qy; return;
-  }
-  // weights: closer points pull harder (1 / distance^2)
-  if (_dlW.length < n) _dlW = new Array(n);
-  const w = _dlW;
-  let wSum = 0, pCx = 0, pCy = 0, qCx = 0, qCy = 0;
-  for (let i = 0; i < n; i++) {
-    const dx = x - pts[i].qx, dy = y - pts[i].qy;
-    const d2 = dx * dx + dy * dy;
-    if (d2 < 0.01) { out[0] = pts[i].px; out[1] = pts[i].py; return; } // right on a point: exact home
-    w[i] = 1 / d2;
-    wSum += w[i];
-    pCx += w[i] * pts[i].px; pCy += w[i] * pts[i].py;
-    qCx += w[i] * pts[i].qx; qCy += w[i] * pts[i].qy;
-  }
-  pCx /= wSum; pCy /= wSum; qCx /= wSum; qCy /= wSum;
-  // best-fit similarity (uniform scale + rotation) from the dragged
-  // frame back to the home frame, in least-squares terms
-  let mu = 0, a = 0, b = 0;
-  for (let i = 0; i < n; i++) {
-    const qx = pts[i].qx - qCx, qy = pts[i].qy - qCy;
-    const px = pts[i].px - pCx, py = pts[i].py - pCy;
-    mu += w[i] * (qx * qx + qy * qy);
-    a += w[i] * (qx * px + qy * py);
-    b += w[i] * (qx * py - qy * px);
-  }
-  if (mu < 1e-9) { out[0] = x + pCx - qCx; out[1] = y + pCy - qCy; return; } // all points stacked: translate
-  a /= mu; b /= mu;
-  const vx = x - qCx, vy = y - qCy;
-  out[0] = pCx + a * vx - b * vy; out[1] = pCy + b * vx + a * vy;
-}
-
-/* bilinear sample of the source pixels at (sx, sy), written to od[o..o+3] */
-function dlSample(sd, W, H, sx, sy, od, o) {
-  if (sx < 0) sx = 0; else if (sx > W - 1) sx = W - 1;
-  if (sy < 0) sy = 0; else if (sy > H - 1) sy = H - 1;
-  const x0 = Math.floor(sx), y0 = Math.floor(sy);
-  const x1 = x0 + 1 < W ? x0 + 1 : x0;
-  const y1 = y0 + 1 < H ? y0 + 1 : y0;
-  const fx = sx - x0, fy = sy - y0;
-  const i00 = (y0 * W + x0) * 4, i10 = (y0 * W + x1) * 4;
-  const i01 = (y1 * W + x0) * 4, i11 = (y1 * W + x1) * 4;
-  for (let c = 0; c < 4; c++) {
-    const top = sd[i00 + c] * (1 - fx) + sd[i10 + c] * fx;
-    const bot = sd[i01 + c] * (1 - fx) + sd[i11 + c] * fx;
-    od[o + c] = top * (1 - fy) + bot * fy;
-  }
-}
-
-/* ================= v8.6: DragLab liquify brushes =================
- * A second way to push the SAME warp. Where points store a handful of
- * drag pairs for the MLS solve, the brushes paint a persistent grid of
- * small forward offsets (in photo pixels) on the renderer's own coarse
- * grid. dlInvMap below composes the two into ONE backward lookup, so
- * there is still exactly one render path — and points + brush strokes
- * happily stack on the same photo. */
-
-/* the brush grid for the current photo, made on first use. Node (gx, gy)
- * sits at photo position (gx*step, gy*step) — the same nodes dlRenderWarp
- * evaluates — and (ox, oy) says how far that node's content has been
- * pushed. peak caches the largest offset so the renderer can skip the
- * warp entirely when nothing has been painted. */
-function dlBrushGrid() {
-  const D = dlState();
-  if (!D.src) return null;
-  const W = D.src.w, H = D.src.h;
-  const step = Math.max(1, Math.round(Math.max(W, H) / 300));
-  const gw = Math.floor(W / step) + 1, gh = Math.floor(H / step) + 1;
-  if (D.brush && D.brush.step === step && D.brush.gw === gw && D.brush.gh === gh) return D.brush;
-  D.brush = { step, gw, gh, ox: new Float32Array(gw * gh), oy: new Float32Array(gw * gh), peak: 0, ver: 0 };
-  D.brushUndo = [];
-  return D.brush;
-}
-
-/* bilinear read of the brush offsets at an arbitrary photo position,
- * written into out[0..1] (perf: no per-node allocation) */
-function dlBrushOffsetAt(grid, x, y, out) {
-  const gw = grid.gw, gh = grid.gh;
-  if (gw < 2 || gh < 2) { out[0] = 0; out[1] = 0; return; }
-  const gxf = x / grid.step, gyf = y / grid.step;
-  const gx0 = Math.max(0, Math.min(Math.floor(gxf), gw - 2)), fx = gxf - gx0;
-  const gy0 = Math.max(0, Math.min(Math.floor(gyf), gh - 2)), fy = gyf - gy0;
-  const i00 = gy0 * gw + gx0, i10 = i00 + 1, i01 = i00 + gw, i11 = i01 + 1;
-  out[0] = (grid.ox[i00] * (1 - fx) + grid.ox[i10] * fx) * (1 - fy)
-         + (grid.ox[i01] * (1 - fx) + grid.ox[i11] * fx) * fy;
-  out[1] = (grid.oy[i00] * (1 - fx) + grid.oy[i10] * fx) * (1 - fy)
-         + (grid.oy[i01] * (1 - fx) + grid.oy[i11] * fx) * fy;
-}
-
-/* paint one brush dab into the grid. (dx, dy) is how far the pointer
- * travelled for this dab — only Push uses it. Every dab is weighted by a
- * cosine falloff: full strength at the centre, easing to exactly zero at
- * the rim, so strokes blend with no hard edge. strength runs 0..1. */
-function dlBrushDab(grid, cx, cy, radius, strength, kind, dx, dy) {
-  if (!grid || radius <= 0 || strength <= 0) return;
-  const step = grid.step, gw = grid.gw, gh = grid.gh;
-  const gxA = Math.max(0, Math.floor((cx - radius) / step)), gxB = Math.min(gw - 1, Math.ceil((cx + radius) / step));
-  const gyA = Math.max(0, Math.floor((cy - radius) / step)), gyB = Math.min(gh - 1, Math.ceil((cy + radius) / step));
-  let peak2 = grid.peak * grid.peak, touched = false;
-  for (let gy = gyA; gy <= gyB; gy++) {
-    for (let gx = gxA; gx <= gxB; gx++) {
-      const vx = gx * step - cx, vy = gy * step - cy;
-      const d = Math.hypot(vx, vy);
-      if (d >= radius) continue;
-      const f = (1 + Math.cos(Math.PI * d / radius)) / 2;
-      let ax = 0, ay = 0;
-      if (kind === "push") {           // content follows the stroke
-        ax = dx * strength * f; ay = dy * strength * f;
-      } else if (kind === "pinch") {   // content pulled toward the centre
-        ax = -vx * 0.3 * strength * f; ay = -vy * 0.3 * strength * f;
-      } else if (kind === "bloat") {   // content pushed away from the centre
-        ax = vx * 0.3 * strength * f; ay = vy * 0.3 * strength * f;
-      } else if (kind === "twirl") {   // content rotated around the centre
-        ax = -vy * 0.25 * strength * f; ay = vx * 0.25 * strength * f;
-      }
-      if (!ax && !ay) continue;
-      const i = gy * gw + gx;
-      grid.ox[i] += ax; grid.oy[i] += ay;
-      touched = true;
-      /* perf: squared-distance pre-check — sqrt only for a node that can
-       * actually beat the peak (peak is only ever a > 0 gate, so this is
-       * the same decision Math.hypot would make) */
-      const m2 = grid.ox[i] * grid.ox[i] + grid.oy[i] * grid.oy[i];
-      if (m2 > peak2) { grid.peak = Math.sqrt(m2); peak2 = m2; }
-    }
-  }
-  if (touched) grid.ver++;   // warp-cache signature: brush contents changed
-}
-
-/* stroke snapshots for Undo: the grid is small (a few hundred nodes a
- * side at most), so a plain copy per stroke is cheap */
-function dlBrushSnap(grid) {
-  return { ox: grid.ox.slice(), oy: grid.oy.slice(), peak: grid.peak };
-}
-function dlBrushRestore(grid, snap) {
-  grid.ox.set(snap.ox); grid.oy.set(snap.oy); grid.peak = snap.peak;
-  grid.ver++;   // contents changed under the same grid object
-}
-
-/* THE backward lookup the renderer uses: first the point warp (MLS),
- * then the brush field — a dab moved content from home to home+offset,
- * so the lookup steps back by the offset painted at the spot the point
- * warp landed on. With no brush painted this is dlMapPoint untouched. */
-function dlInvMap(x, y, pts, brush, out) {
-  dlMapPoint(x, y, pts, _dlM);
-  if (!brush || brush.peak <= 0) { out[0] = _dlM[0]; out[1] = _dlM[1]; return; }
-  dlBrushOffsetAt(brush, _dlM[0], _dlM[1], _dlO);
-  out[0] = _dlM[0] - _dlO[0]; out[1] = _dlM[1] - _dlO[1];
-}
-
-/* perf: warp scratch buffers (grid maps + output ImageData), allocated
- * once per (W, H, step) and reused every render — every byte is fully
- * rewritten on each pass, so reuse changes nothing in the output. */
-let _dlWarpBuf = null;
-
-function dlWarpBuffers(ctx, W, H, step, gw, gh) {
-  if (_dlWarpBuf && _dlWarpBuf.w === W && _dlWarpBuf.h === H && _dlWarpBuf.step === step) return _dlWarpBuf;
-  _dlWarpBuf = {
-    w: W, h: H, step,
-    mapX: new Float32Array(gw * gh), mapY: new Float32Array(gw * gh),
-    img: ctx.createImageData(W, H),
-  };
-  return _dlWarpBuf;
-}
-
-/* draw the warped photo into ctx (points are NOT drawn here, so Export
- * reuses this as-is). The backward map is evaluated on a coarse grid and
- * interpolated — per-pixel MLS at full size would drag too slowly. */
-function dlRenderWarp(ctx) {
-  const D = dlState();
-  const src = D.src, pts = D.points;
-  const W = src.w, H = src.h;
-  const displaced = pts.some(p => p.qx !== p.px || p.qy !== p.py);
-  const brushOn = !!(D.brush && D.brush.peak > 0);
-  if ((!pts.length || !displaced) && !brushOn) { ctx.drawImage(D.srcCv, 0, 0); return; }
-  const step = Math.max(1, Math.round(Math.max(W, H) / 300));
-  const gw = Math.floor(W / step) + 1, gh = Math.floor(H / step) + 1;
-  const buf = dlWarpBuffers(ctx, W, H, step, gw, gh);
-  const mapX = buf.mapX, mapY = buf.mapY;
-  const node = [0, 0];
-  for (let gy = 0; gy < gh; gy++) {
-    for (let gx = 0; gx < gw; gx++) {
-      dlInvMap(gx * step, gy * step, pts, D.brush, node);
-      mapX[gy * gw + gx] = node[0];
-      mapY[gy * gw + gx] = node[1];
-    }
-  }
-  const out = buf.img;
-  const od = out.data, sd = src.data;
-  for (let y = 0; y < H; y++) {
-    const gyf = y / step;
-    const gy0 = Math.min(Math.floor(gyf), gh - 2), fy = gyf - gy0;
-    const row0 = gy0 * gw, row1 = row0 + gw;
-    for (let x = 0; x < W; x++) {
-      const gxf = x / step;
-      const gx0 = Math.min(Math.floor(gxf), gw - 2), fx = gxf - gx0;
-      const i00 = row0 + gx0, i10 = i00 + 1, i01 = row1 + gx0, i11 = i01 + 1;
-      const sx = (mapX[i00] * (1 - fx) + mapX[i10] * fx) * (1 - fy)
-               + (mapX[i01] * (1 - fx) + mapX[i11] * fx) * fy;
-      const sy = (mapY[i00] * (1 - fx) + mapY[i10] * fx) * (1 - fy)
-               + (mapY[i01] * (1 - fx) + mapY[i11] * fx) * fy;
-      dlSample(sd, W, H, sx, sy, od, (y * W + x) * 4);
-    }
-  }
-  ctx.putImageData(out, 0, 0);
-}
-
-/* perf: the theme accent (--violet) is read once and cached — the old
- * code paid a getComputedStyle on every single draw. Invalidated by a
- * data-theme MutationObserver, the same pattern the cursor trail uses. */
-let _dlAccent = null;
-function dlAccent() {
-  if (_dlAccent) return _dlAccent;
-  let accent = "#22c55e";
-  try { accent = getComputedStyle(document.documentElement).getPropertyValue("--violet").trim() || accent; } catch (e) {}
-  _dlAccent = accent;
-  return accent;
-}
-try {
-  new MutationObserver(() => { _dlAccent = null; })
-    .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-} catch (e) {}
-
-/* numbered dots over the photo; a dragged point keeps a tether + ghost
- * at its home spot so the pull reads clearly */
-function dlDrawPoints(ctx) {
-  const D = dlState();
-  const accent = dlAccent();
-  const s = Math.max(6, Math.min(D.src.w, D.src.h) / 58);
-  ctx.save();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  D.points.forEach((p, i) => {
-    if (p.qx !== p.px || p.qy !== p.py) {
-      ctx.strokeStyle = accent; ctx.globalAlpha = 0.55;
-      ctx.lineWidth = Math.max(1, s / 4);
-      ctx.beginPath(); ctx.moveTo(p.px, p.py); ctx.lineTo(p.qx, p.qy); ctx.stroke();
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = "rgba(255,255,255,.8)";
-      ctx.beginPath(); ctx.arc(p.px, p.py, s * 0.35, 0, 7); ctx.fill();
-    }
-    ctx.beginPath(); ctx.arc(p.qx, p.qy, s, 0, 7);
-    ctx.fillStyle = accent; ctx.fill();
-    ctx.lineWidth = Math.max(1.5, s / 3); ctx.strokeStyle = "#fff"; ctx.stroke();
-    ctx.fillStyle = "#fff";
-    ctx.font = "700 " + Math.round(s * 1.05) + "px system-ui, sans-serif";
-    ctx.fillText(String(i + 1), p.qx, p.qy + 0.5);
-  });
-  ctx.restore();
-}
-
-/* the brush cursor: a plain ring at the current brush size, drawn over
- * the photo while the pointer hovers in Brush mode (the OS cursor is
- * hidden over the canvas then, so the ring IS the cursor) */
-let dlHover = null;   // pointer position over the canvas, photo coords
-
-function dlDrawBrushCursor(ctx) {
-  const D = dlState();
-  if (D.mode !== "brush" || !dlHover || !D.src) return;
-  const accent = dlAccent();
-  ctx.save();
-  ctx.beginPath(); ctx.arc(dlHover.x, dlHover.y, D.brushSize, 0, 7);
-  ctx.strokeStyle = "rgba(0,0,0,.45)"; ctx.lineWidth = 3.5; ctx.stroke();
-  ctx.beginPath(); ctx.arc(dlHover.x, dlHover.y, D.brushSize, 0, 7);
-  ctx.strokeStyle = accent; ctx.lineWidth = 1.5; ctx.stroke();
-  ctx.restore();
-}
-
-/* perf: warp bitmap cache. Rendering the warp is the expensive part of
- * a draw (inverse map + full resample); the points and brush ring on top
- * are cheap. The rendered warp is kept on an offscreen canvas keyed by a
- * signature of everything dlRenderWarp reads — the source photo, every
- * point's home/dragged coords, and the brush grid's contents version.
- * A draw whose signature matches just blits the cached bitmap, so a
- * Brush-mode hover (ring moves, warp inputs untouched) costs no warp. */
-let _dlWarpCache = null;   // { cv, sig, src }
-
-function dlWarpSig(D) {
-  let sig = D.src.w + "x" + D.src.h + "|";
-  for (let i = 0; i < D.points.length; i++) {
-    const p = D.points[i];
-    sig += p.px + "," + p.py + "," + p.qx + "," + p.qy + ";";
-  }
-  sig += "|" + (D.brush ? D.brush.ver + "/" + D.brush.peak : "-");
-  return sig;
-}
-
-function dlDraw() {
-  const D = dlState();
-  const cv = $("#dlCanvas");
-  if (!cv || !D.src) return;
-  const ctx = cv.getContext("2d");
-  const sig = dlWarpSig(D);
-  if (!_dlWarpCache) _dlWarpCache = { cv: document.createElement("canvas"), sig: "", src: null };
-  if (_dlWarpCache.sig !== sig || _dlWarpCache.src !== D.src) {
-    const cc = _dlWarpCache.cv;
-    if (cc.width !== D.src.w || cc.height !== D.src.h) { cc.width = D.src.w; cc.height = D.src.h; }
-    dlRenderWarp(cc.getContext("2d"));
-    _dlWarpCache.sig = sig;
-    _dlWarpCache.src = D.src;
-  }
-  ctx.drawImage(_dlWarpCache.cv, 0, 0);
-  dlDrawPoints(ctx);
-  dlDrawBrushCursor(ctx);
-  const ro = $("#dlReadout");
-  if (ro) {
-    let tail;
-    if (D.mode === "brush") {
-      const kindName = D.brushKind.charAt(0).toUpperCase() + D.brushKind.slice(1);
-      tail = " · brush: " + kindName
-        + (D.brush && D.brush.peak > 0 ? " · liquified" : " · drag on the photo to paint")
-        + (D.points.length ? " · " + D.points.length + (D.points.length === 1 ? " point" : " points") : "");
-    } else {
-      tail = D.points.length
-        ? " · " + D.points.length + (D.points.length === 1 ? " point" : " points")
-        : " · no points yet — click the photo";
-      if (D.brush && D.brush.peak > 0) tail += " · liquified";
-    }
-    ro.textContent = D.name + " · " + D.src.w + " × " + D.src.h + tail;
-  }
-}
-
-let dlDrawQueued = false;
-function dlQueueDraw() {
-  if (dlDrawQueued) return;
-  dlDrawQueued = true;
-  requestAnimationFrame(() => { dlDrawQueued = false; dlDraw(); });
-}
-
-/* the built-in test card: graph paper (so the warp is easy to see) plus
- * a big simple face to pull around — drawn in code, zero downloads */
-function dlMakeSample() {
-  const w = 480, h = 360;
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  const c = cv.getContext("2d");
-  c.fillStyle = "#f6f2e4"; c.fillRect(0, 0, w, h);
-  c.strokeStyle = "rgba(70,90,130,.20)"; c.lineWidth = 1;
-  c.beginPath();
-  for (let x = 0; x <= w; x += 24) { c.moveTo(x + .5, 0); c.lineTo(x + .5, h); }
-  for (let y = 0; y <= h; y += 24) { c.moveTo(0, y + .5); c.lineTo(w, y + .5); }
-  c.stroke();
-  const cx = 240, cy = 186, r = 104;
-  c.lineWidth = 5; c.strokeStyle = "#5b4632";
-  // ears
-  c.fillStyle = "#ffd9a0";
-  c.beginPath(); c.arc(cx - r, cy + 4, 20, 0, 7); c.fill(); c.stroke();
-  c.beginPath(); c.arc(cx + r, cy + 4, 20, 0, 7); c.fill(); c.stroke();
-  // head
-  c.beginPath(); c.arc(cx, cy, r, 0, 7); c.fill(); c.stroke();
-  // hair cap
-  c.fillStyle = "#8a5a24";
-  c.beginPath(); c.arc(cx, cy - 4, r, Math.PI * 1.06, Math.PI * 1.94); c.closePath(); c.fill();
-  // eyes
-  [[cx - 38, cy - 14], [cx + 38, cy - 14]].forEach(([ex, ey]) => {
-    c.fillStyle = "#fff";
-    c.lineWidth = 3;
-    c.beginPath(); c.arc(ex, ey, 15, 0, 7); c.fill(); c.stroke();
-    c.fillStyle = "#33302a";
-    c.beginPath(); c.arc(ex, ey, 6.5, 0, 7); c.fill();
-    c.fillStyle = "#fff";
-    c.beginPath(); c.arc(ex + 2, ey - 2, 2, 0, 7); c.fill();
-  });
-  // brows
-  c.strokeStyle = "#5b4632"; c.lineWidth = 4; c.lineCap = "round";
-  c.beginPath(); c.moveTo(cx - 52, cy - 40); c.lineTo(cx - 24, cy - 44); c.stroke();
-  c.beginPath(); c.moveTo(cx + 24, cy - 44); c.lineTo(cx + 52, cy - 40); c.stroke();
-  // nose + cheeks + smile
-  c.lineWidth = 3.5;
-  c.beginPath(); c.moveTo(cx, cy); c.quadraticCurveTo(cx + 6, cy + 10, cx - 2, cy + 16); c.stroke();
-  c.fillStyle = "rgba(244,110,110,.45)";
-  c.beginPath(); c.arc(cx - 56, cy + 30, 13, 0, 7); c.fill();
-  c.beginPath(); c.arc(cx + 56, cy + 30, 13, 0, 7); c.fill();
-  c.strokeStyle = "#5b4632"; c.lineWidth = 5;
-  c.beginPath(); c.arc(cx, cy + 22, 44, Math.PI * 0.18, Math.PI * 0.82); c.stroke();
-  c.fillStyle = "#5b4632";
-  c.font = "700 19px system-ui, sans-serif";
-  c.textAlign = "center";
-  c.fillText("pull my cheeks!", cx, 338);
-  return cv;
-}
-
-/* bring an image in (file, paste, drop or the sample) and make it the
- * working photo. Working size is capped at 640px on the long edge so
- * dragging stays smooth; the original dimensions are kept for the label. */
-function dlLoadSource(img, name) {
-  const D = dlState();
-  const scale = Math.min(1, 640 / Math.max(img.width, img.height));
-  const w = Math.max(1, Math.round(img.width * scale));
-  const h = Math.max(1, Math.round(img.height * scale));
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  const cx2 = cv.getContext("2d", { willReadFrequently: true });
-  cx2.drawImage(img, 0, 0, w, h);
-  const id = cx2.getImageData(0, 0, w, h);
-  D.src = { data: id.data, w, h };
-  D.srcCv = cv;
-  D.imgW = img.width; D.imgH = img.height;
-  D.points = [];
-  D.brush = null;          // the offset grid was painted for the old photo
-  D.brushUndo = [];
-  D.name = name || "photo";
-  if (img.close) img.close();
-  const view = $("#dlCanvas");
-  if (view) { view.width = w; view.height = h; }
-  const empty = $("#dlEmpty");
-  if (empty) empty.hidden = true;
-  const dlExp = $("#dlExport");
-  if (dlExp) dlExp.disabled = false;
-  dlDraw();
-}
-
-async function dlLoadFile(file) {
-  if (!file) return;
-  try {
-    const bmp = await createImageBitmap(file);
-    dlLoadSource(bmp, file.name || "photo");
-  } catch (err) {
-    const ro = $("#dlReadout");
-    if (ro) ro.textContent = "couldn't read that image — try a PNG or JPG.";
-  }
-}
-
-function dlExportPNG() {
-  const D = dlState();
-  if (!D.src) {
-    const ro = $("#dlReadout");
-    if (ro) ro.textContent = "Load a photo or the sample first.";
-    return;
-  }
-  const cv = document.createElement("canvas");
-  cv.width = D.src.w; cv.height = D.src.h;
-  dlRenderWarp(cv.getContext("2d"));
-  downloadCanvas(cv, "m4ster-draglab-" + D.src.w + "x" + D.src.h + ".png");
-}
-
-/* ---------------- DragLab wiring ---------------- */
-
-let dlDrag = null;        // index of the point being dragged, or null
-let dlStroke = null;      // brush stroke in flight: { x, y } last dab spot
-let dlStaticWired = false;
-
-/* walk a brush stroke from its last spot to (x, y), stamping dabs about
- * a quarter radius apart so fast strokes stay smooth instead of dotted.
- * Push dabs carry the per-step pointer travel; the other brushes just
- * stamp at each step. */
-function dlBrushStrokeTo(x, y) {
-  const D = dlState();
-  const grid = dlBrushGrid();
-  if (!grid || !dlStroke) return;
-  const strength = D.brushStrength / 100;
-  const dx = x - dlStroke.x, dy = y - dlStroke.y;
-  const dist = Math.hypot(dx, dy);
-  const spacing = Math.max(2, D.brushSize * 0.25);
-  const n = Math.max(1, Math.ceil(dist / spacing));
-  for (let i = 1; i <= n; i++) {
-    dlBrushDab(grid, dlStroke.x + dx * i / n, dlStroke.y + dy * i / n,
-      D.brushSize, strength, D.brushKind, dx / n, dy / n);
-  }
-  dlStroke.x = x; dlStroke.y = y;
-}
-
-function dlCanvasPos(e) {
-  const cv = $("#dlCanvas");
-  const r = cv.getBoundingClientRect();
-  return {
-    x: (e.clientX - r.left) * cv.width / r.width,
-    y: (e.clientY - r.top) * cv.height / r.height,
-  };
-}
-
-function dlHitPoint(x, y) {
-  const D = dlState();
-  if (!D.src) return -1;
-  const tol = Math.max(12, Math.min(D.src.w, D.src.h) / 26);
-  let best = -1, bestD = tol;
-  D.points.forEach((p, i) => {
-    const d = Math.hypot(p.qx - x, p.qy - y);
-    if (d < bestD) { bestD = d; best = i; }
-  });
-  return best;
-}
-
-function dlWireCanvas() {
-  const cv = $("#dlCanvas");
-  if (!cv) return;
-  cv.addEventListener("pointerdown", (e) => {
-    const D = dlState();
-    if (!D.src || e.button === 2) return;
-    const pos = dlCanvasPos(e);
-    if (D.mode === "brush") {
-      // a stroke starts: snapshot the grid for Undo (capped — the oldest
-      // strokes fall off), stamp one dab so a plain click still paints
-      // with Pinch/Bloat/Twirl, and remember where the stroke is
-      const grid = dlBrushGrid();
-      if (!grid) return;
-      D.brushUndo.push(dlBrushSnap(grid));
-      if (D.brushUndo.length > 20) D.brushUndo.shift();
-      dlStroke = { x: pos.x, y: pos.y };
-      dlBrushDab(grid, pos.x, pos.y, D.brushSize, D.brushStrength / 100, D.brushKind, 0, 0);
-      dlHover = pos;
-      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-      dlDraw();          // paint the first dab now (see the point note below)
-      e.preventDefault();
-      return;
-    }
-    let idx = dlHitPoint(pos.x, pos.y);
-    const isNew = idx < 0;
-    if (isNew) {
-      D.points.push({ px: pos.x, py: pos.y, qx: pos.x, qy: pos.y });
-      idx = D.points.length - 1;
-    }
-    dlDrag = idx;
-    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-    // No long-press-to-remove: a press that pauses before moving (a user
-    // thinking, a slow drag start, automation driving the page) must
-    // never eat the point mid-gesture — that timer once killed every
-    // slow drag before it started: the point vanished, the drag went
-    // nowhere and the readout fell back to "no points yet". Points are
-    // removed by right-click instead (see contextmenu below).
-    dlDraw();          // paint the grabbed/new point now, even if rAF is throttled
-    e.preventDefault();
-  });
-  cv.addEventListener("pointermove", (e) => {
-    const D = dlState();
-    if (D.mode === "brush") {
-      // the ring cursor tracks the pointer even between strokes; during
-      // a stroke the same moves stamp dabs along the way
-      if (D.src) dlHover = dlCanvasPos(e);
-      if (dlStroke && D.src) { dlBrushStrokeTo(dlHover.x, dlHover.y); dlQueueDraw(); }
-      else if (D.src) dlQueueDraw();
-      return;
-    }
-    if (dlDrag === null) return;
-    const p = D.points[dlDrag];
-    if (!p) { dlDrag = null; return; }
-    const pos = dlCanvasPos(e);
-    const mx = D.src.w / 4, my = D.src.h / 4; // a little room past the edges
-    p.qx = Math.max(-mx, Math.min(D.src.w + mx, pos.x));
-    p.qy = Math.max(-my, Math.min(D.src.h + my, pos.y));
-    dlQueueDraw();
-  });
-  const endDrag = () => {
-    const hadStroke = !!dlStroke;
-    dlStroke = null;
-    if (dlDrag === null && !hadStroke) return;
-    dlDrag = null;
-    dlDraw();          // final warp painted on release, rAF or no rAF
-  };
-  cv.addEventListener("pointerup", endDrag);
-  cv.addEventListener("pointercancel", endDrag);
-  cv.addEventListener("pointerleave", () => {
-    if (dlHover !== null) { dlHover = null; dlQueueDraw(); }
-  });
-  cv.addEventListener("contextmenu", (e) => {
-    e.preventDefault();
-    const D = dlState();
-    if (!D.src || D.mode === "brush") return; // right-click deletes points in Points mode only
-    const pos = dlCanvasPos(e);
-    const idx = dlHitPoint(pos.x, pos.y);
-    if (idx >= 0) { D.points.splice(idx, 1); dlQueueDraw(); }
-  });
-  // drag & drop onto the stage box
-  const box = $("#dlStageBox");
-  if (box) {
-    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.add("dl-over");
-    }));
-    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.remove("dl-over");
-    }));
-    box.addEventListener("drop", (e) => {
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) dlLoadFile(f);
-    });
-  }
-  // paste an image while the DragLab lane is open
-  document.addEventListener("paste", (e) => {
-    if (state.category !== "draglab") return;
-    const items = (e.clipboardData && e.clipboardData.items) || [];
-    for (const it of items) {
-      if (it.type && it.type.indexOf("image/") === 0) {
-        const f = it.getAsFile();
-        if (f) { dlLoadFile(f); e.preventDefault(); }
-        return;
-      }
-    }
-  });
-}
-
-/* Reset is shared by both modes: points AND brush paint both clear —
- * Reset means "back to the photo I loaded", whichever tools touched it */
-function dlResetAll() {
-  const D = dlState();
-  D.points = [];
-  D.brush = null;
-  D.brushUndo = [];
-  dlQueueDraw();
-}
-
-/* keep the panel honest about the current mode: the right control block
- * visible, the right buttons lit, the canvas cursor matching */
-function dlSyncBrushUI() {
-  const D = dlState();
-  const brush = D.mode === "brush";
-  const pc = $("#dlPointsCtl"), bc = $("#dlBrushCtl");
-  if (pc) pc.hidden = brush;
-  if (bc) bc.hidden = !brush;
-  document.querySelectorAll("#dlModeSeg .seg-btn").forEach(b =>
-    b.classList.toggle("active", b.dataset.dlmode === D.mode));
-  document.querySelectorAll("#dlBrushSeg .seg-btn").forEach(b =>
-    b.classList.toggle("active", b.dataset.brush === D.brushKind));
-  const size = $("#dlBrushSize"), sizeVal = $("#dlBrushSizeVal");
-  if (size) { size.value = D.brushSize; if (sizeVal) sizeVal.textContent = D.brushSize + "px"; }
-  const str = $("#dlBrushStrength"), strVal = $("#dlBrushStrengthVal");
-  if (str) { str.value = D.brushStrength; if (strVal) strVal.textContent = D.brushStrength + "%"; }
-  const cv = $("#dlCanvas");
-  if (cv) cv.classList.toggle("dl-brush", brush);
-  const hint = $("#dlStageHint");
-  if (hint) hint.textContent = brush
-    ? "Drag on the photo to liquify it — push, pinch, bloat or twirl."
-    : "Click to add a point, drag it to pull the picture.";
-}
-
-function wireDraglab() {
-  $("#dlSample").onclick = () => dlLoadSource(dlMakeSample(), "sample face");
-  $("#dlPick").onclick = () => $("#dlFile").click();
-  $("#dlFile").onchange = (e) => {
-    dlLoadFile(e.target.files[0]);
-    e.target.value = "";
-  };
-  $("#dlUndo").onclick = () => {
-    const D = dlState();
-    if (D.points.length) { D.points.pop(); dlQueueDraw(); }
-  };
-  $("#dlReset").onclick = dlResetAll;
-  const resetB = $("#dlResetB");
-  if (resetB) resetB.onclick = dlResetAll;
-  $("#dlExport").onclick = dlExportPNG;
-  $("#dlExport").disabled = !dlState().src;
-  document.querySelectorAll("#dlModeSeg .seg-btn").forEach(b => {
-    b.onclick = () => {
-      const D = dlState();
-      if (D.mode === b.dataset.dlmode) return;
-      D.mode = b.dataset.dlmode;   // switching modes never wipes the other mode's work
-      dlSyncBrushUI();
-      dlDraw();
-    };
-  });
-  document.querySelectorAll("#dlBrushSeg .seg-btn").forEach(b => {
-    b.onclick = () => { dlState().brushKind = b.dataset.brush; dlSyncBrushUI(); };
-  });
-  const size = $("#dlBrushSize");
-  if (size) size.oninput = () => {
-    const D = dlState();
-    D.brushSize = +size.value;
-    const v = $("#dlBrushSizeVal"); if (v) v.textContent = D.brushSize + "px";
-    dlQueueDraw();   // the ring cursor resizes with the slider
-  };
-  const str = $("#dlBrushStrength");
-  if (str) str.oninput = () => {
-    const D = dlState();
-    D.brushStrength = +str.value;
-    const v = $("#dlBrushStrengthVal"); if (v) v.textContent = D.brushStrength + "%";
-  };
-  const undoStroke = $("#dlBrushUndo");
-  if (undoStroke) undoStroke.onclick = () => {
-    const D = dlState();
-    const snap = D.brushUndo.pop();
-    if (snap && D.brush) { dlBrushRestore(D.brush, snap); dlQueueDraw(); }
-  };
-  if (!dlStaticWired) {
-    dlStaticWired = true;
-    dlWireCanvas();
-  }
-  dlSyncBrushUI();
-  syncDraglabMode();
-}
-
-/* ================= v8.3: shared in-browser AI runtime =================
- * One lazy loader for onnxruntime-web (MIT) plus a session factory, so
- * every AI lane (Cutout Lab today, the AI Upscaler next) rides the same
- * plumbing. The runtime script comes from the jsDelivr CDN and is only
- * fetched the first time an AI tool actually runs — the normal page load
- * never pays for it. Sessions live in a Web Worker so a heavy model can
- * never freeze the page; if workers are unavailable the session is made
- * on the page thread instead. Model bytes are cached in Cache Storage
- * after the first download, so repeat runs skip the download entirely. */
-
-const AI_ORT_SRC = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js";
-const AI_ORT_DIR = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
-const AI_MODEL_CACHE = "framelab-ai-models-v1";
-
-let aiOrtPromise = null;
-function aiLoadOrt() {
-  if (window.ort) return Promise.resolve(window.ort);
-  if (aiOrtPromise) return aiOrtPromise;
-  aiOrtPromise = new Promise((resolve, reject) => {
-    const tag = document.createElement("script");
-    tag.src = AI_ORT_SRC;
-    tag.async = true;
-    tag.onload = () => {
-      if (window.ort) {
-        try { window.ort.env.wasm.wasmPaths = AI_ORT_DIR; } catch (e) {}
-        resolve(window.ort);
-      } else {
-        aiOrtPromise = null;
-        reject(new Error("AI runtime arrived empty"));
-      }
-    };
-    tag.onerror = () => {
-      aiOrtPromise = null;
-      reject(new Error("couldn't load the AI runtime — check your connection"));
-    };
-    document.head.appendChild(tag);
-  });
-  return aiOrtPromise;
-}
-
-/* fetch a model file once, then serve it from Cache Storage forever.
- * onProgress(fraction) fires during the network download only. */
-async function aiFetchModel(modelUrl, onProgress) {
-  try {
-    const cache = await caches.open(AI_MODEL_CACHE);
-    const hit = await cache.match(modelUrl);
-    if (hit) {
-      if (onProgress) onProgress(1);
-      return new Uint8Array(await hit.arrayBuffer());
-    }
-  } catch (e) { /* no Cache Storage — plain fetch below */ }
-  const res = await fetch(modelUrl);
-  if (!res.ok) throw new Error("model download failed (HTTP " + res.status + ")");
-  const total = parseInt(res.headers.get("Content-Length") || "0", 10);
-  let bytes;
-  if (res.body && typeof res.body.getReader === "function" && total > 0) {
-    const reader = res.body.getReader();
-    const chunks = [];
-    let got = 0;
-    for (;;) {
-      const part = await reader.read();
-      if (part.done) break;
-      chunks.push(part.value);
-      got += part.value.length;
-      if (onProgress) onProgress(Math.min(1, got / total));
-    }
-    bytes = new Uint8Array(got);
-    let off = 0;
-    for (const c of chunks) { bytes.set(c, off); off += c.length; }
-  } else {
-    bytes = new Uint8Array(await res.arrayBuffer());
-    if (onProgress) onProgress(1);
-  }
-  try {
-    const cache = await caches.open(AI_MODEL_CACHE);
-    await cache.put(modelUrl, new Response(bytes.slice()));
-  } catch (e) { /* caching is a bonus, not a requirement */ }
-  return bytes;
-}
-
-/* The inference worker's source, kept as a string so the site stays a
- * static file drop (no extra worker file to deploy). The worker owns the
- * ort sessions — one per model URL — and answers two messages:
- *   { type:"init", ortSrc, wasmDir, modelUrl, cacheName }
- *   { type:"run",  modelUrl, feeds:{ name:{ data, dims } } }
- * Download progress comes back as { type:"progress", value }. */
-function aiWorkerSource() {
-  return `
-"use strict";
-var sessions = {};
-function fetchModel(url, cacheName, say) {
-  return caches.open(cacheName).then(function (cache) {
-    return cache.match(url).then(function (hit) {
-      if (hit) {
-        say(1);
-        return hit.arrayBuffer().then(function (ab) { return new Uint8Array(ab); });
-      }
-      return fetch(url).then(function (res) {
-        if (!res.ok) throw new Error("model download failed (HTTP " + res.status + ")");
-        var total = parseInt(res.headers.get("Content-Length") || "0", 10);
-        var store = function (bytes) {
-          return cache.put(url, new Response(bytes.slice())).catch(function () {}).then(function () { return bytes; });
-        };
-        if (res.body && res.body.getReader && total > 0) {
-          var reader = res.body.getReader();
-          var chunks = [], got = 0;
-          var pump = function () {
-            return reader.read().then(function (part) {
-              if (part.done) {
-                var bytes = new Uint8Array(got), off = 0;
-                chunks.forEach(function (c) { bytes.set(c, off); off += c.length; });
-                return store(bytes);
-              }
-              chunks.push(part.value); got += part.value.length;
-              say(Math.min(1, got / total));
-              return pump();
-            });
-          };
-          return pump();
-        }
-        return res.arrayBuffer().then(function (ab) { say(1); return store(new Uint8Array(ab)); });
-      });
-    });
-  }).catch(function (err) {
-    if (err && /model download failed/.test(err.message)) throw err;
-    return fetch(url).then(function (res) {
-      if (!res.ok) throw new Error("model download failed (HTTP " + res.status + ")");
-      return res.arrayBuffer().then(function (ab) { say(1); return new Uint8Array(ab); });
-    });
-  });
-}
-function makeSession(bytes) {
-  var attempts = [];
-  if (typeof navigator !== "undefined" && navigator.gpu) attempts.push(["webgpu", "wasm"]);
-  attempts.push(["wasm"]);
-  var chain = Promise.reject(new Error("no execution provider tried"));
-  attempts.forEach(function (eps) {
-    chain = chain.catch(function () {
-      return ort.InferenceSession.create(bytes, { executionProviders: eps }).then(function (session) {
-        return { session: session, backend: eps[0] === "webgpu" ? "WebGPU" : "CPU" };
-      });
-    });
-  });
-  return chain;
-}
-self.onmessage = function (e) {
-  var msg = e.data;
-  var fail = function (err) {
-    postMessage({ id: msg.id, ok: false, error: String((err && err.message) || err) });
-  };
-  if (msg.type === "init") {
-    if (sessions[msg.modelUrl]) {
-      var s0 = sessions[msg.modelUrl];
-      postMessage({ id: msg.id, ok: true, backend: s0.backend, inputNames: s0.session.inputNames, outputNames: s0.session.outputNames });
-      return;
-    }
-    importScripts(msg.ortSrc);
-    try { ort.env.wasm.wasmPaths = msg.wasmDir; } catch (err) {}
-    fetchModel(msg.modelUrl, msg.cacheName, function (v) {
-      postMessage({ type: "progress", value: v, modelUrl: msg.modelUrl });
-    }).then(makeSession).then(function (made) {
-      sessions[msg.modelUrl] = made;
-      postMessage({ id: msg.id, ok: true, backend: made.backend, inputNames: made.session.inputNames, outputNames: made.session.outputNames });
-    }).catch(fail);
-  } else if (msg.type === "run") {
-    var entry = sessions[msg.modelUrl];
-    if (!entry) { fail(new Error("AI session not ready")); return; }
-    var feeds = {};
-    Object.keys(msg.feeds).forEach(function (name) {
-      var f = msg.feeds[name];
-      feeds[name] = new ort.Tensor("float32", f.data, f.dims);
-    });
-    entry.session.run(feeds).then(function (out) {
-      var results = {}, transfers = [];
-      Object.keys(out).forEach(function (name) {
-        results[name] = { data: out[name].data, dims: out[name].dims };
-        if (out[name].data && out[name].data.buffer) transfers.push(out[name].data.buffer);
-      });
-      postMessage({ id: msg.id, ok: true, results: results }, transfers);
-    }).catch(fail);
-  }
-};
-`;
-}
-
-let aiWorkerState = null;
-function aiBootWorker() {
-  if (aiWorkerState) return aiWorkerState;
-  const blob = new Blob([aiWorkerSource()], { type: "text/javascript" });
-  const worker = new Worker(URL.createObjectURL(blob));
-  const st = { worker, seq: 0, pending: new Map(), progressCbs: new Map() };
-  worker.onmessage = (e) => {
-    const msg = e.data;
-    if (msg.type === "progress") {
-      /* progress belongs to ONE model's download — route it to that
-       * session's callback only, so overlapping loads (Cutout starting
-       * while Upscale downloads) never steal each other's bar */
-      const cb = msg.modelUrl ? st.progressCbs.get(msg.modelUrl) : null;
-      if (cb) cb(msg.value);
-      return;
-    }
-    const p = st.pending.get(msg.id);
-    if (!p) return;
-    st.pending.delete(msg.id);
-    if (msg.ok) p.resolve(msg);
-    else p.reject(new Error(msg.error || "AI worker error"));
-  };
-  worker.onerror = () => {
-    for (const p of st.pending.values()) p.reject(new Error("AI worker crashed"));
-    st.pending.clear();
-    if (aiWorkerState === st) aiWorkerState = null;
-  };
-  aiWorkerState = st;
-  return st;
-}
-
-function aiWorkerSend(st, msg, transfer) {
-  return new Promise((resolve, reject) => {
-    const id = ++st.seq;
-    st.pending.set(id, { resolve, reject });
-    st.worker.postMessage({ ...msg, id }, transfer || []);
-  });
-}
-
-/* aiLoadSession(modelUrl, onProgress) → Promise<{
- *   backend, inputNames, outputNames,
- *   run(feeds) → Promise<{ name: { data, dims } }>
- * }>
- * Sessions are cached per model URL; a failed load is NOT cached, so the
- * next call retries cleanly. */
-const aiSessions = {};
-function aiLoadSession(modelUrl, onProgress) {
-  if (aiSessions[modelUrl]) return aiSessions[modelUrl];
-  const absUrl = new URL(modelUrl, location.href).href;
-  const promise = (async () => {
-    try {
-      const st = aiBootWorker();
-      if (onProgress) st.progressCbs.set(absUrl, onProgress);
-      let ready;
-      try {
-        ready = await aiWorkerSend(st, {
-          type: "init", ortSrc: AI_ORT_SRC, wasmDir: AI_ORT_DIR,
-          modelUrl: absUrl, cacheName: AI_MODEL_CACHE,
-        });
-      } finally {
-        if (onProgress && st.progressCbs.get(absUrl) === onProgress) st.progressCbs.delete(absUrl);
-      }
-      return {
-        backend: ready.backend,
-        inputNames: ready.inputNames,
-        outputNames: ready.outputNames,
-        run: (feeds) => {
-          const transfers = [];
-          for (const name of Object.keys(feeds)) {
-            const d = feeds[name].data;
-            if (d && d.buffer) transfers.push(d.buffer);
-          }
-          return aiWorkerSend(st, { type: "run", modelUrl: absUrl, feeds }, transfers)
-            .then((res) => res.results);
-        },
-      };
-    } catch (workerErr) {
-      /* fallback: session on the page thread (no Worker support) */
-      const ort = await aiLoadOrt();
-      const bytes = await aiFetchModel(absUrl, onProgress);
-      let session = null, backend = "CPU";
-      const attempts = [];
-      if (typeof navigator !== "undefined" && navigator.gpu) attempts.push(["webgpu", "wasm"]);
-      attempts.push(["wasm"]);
-      for (const eps of attempts) {
-        try {
-          session = await ort.InferenceSession.create(bytes, { executionProviders: eps });
-          backend = eps[0] === "webgpu" ? "WebGPU" : "CPU";
-          break;
-        } catch (e) { session = null; }
-      }
-      if (!session) throw workerErr;
-      return {
-        backend,
-        inputNames: session.inputNames,
-        outputNames: session.outputNames,
-        run: async (feeds) => {
-          const tensors = {};
-          for (const name of Object.keys(feeds)) {
-            tensors[name] = new ort.Tensor("float32", feeds[name].data, feeds[name].dims);
-          }
-          const out = await session.run(tensors);
-          const results = {};
-          for (const name of Object.keys(out)) {
-            results[name] = { data: out[name].data, dims: out[name].dims };
-          }
-          return results;
-        },
-      };
-    }
-  })();
-  aiSessions[modelUrl] = promise;
-  promise.catch(() => { delete aiSessions[modelUrl]; });
-  return promise;
-}
-
-/* ================= v8.3: Cutout Lab — AI background removal =================
- * FrameLab's own cutout tool. A small AI segmentation model (u2netp from
- * the U-2-Net project, Apache-2.0, distributed via the rembg project)
- * runs entirely on the visitor's device through the shared AI runtime
- * above: the photo never leaves the browser, there is no server and no
- * login. Inference runs once per photo and caches a matte; the cut /
- * feather sliders then re-composite from that matte instantly, with no
- * further model runs. */
-
-const CUTOUT_MODEL_URL = "assets/models/u2netp.onnx";
-const CO_SIZE = 320; // the model's fixed input frame
-const CO_MEAN = [0.485, 0.456, 0.406];
-const CO_STD = [0.229, 0.224, 0.225];
-
-function coState() {
-  if (!state.cutout) {
-    state.cutout = {
-      src: null, srcCv: null, imgW: 0, imgH: 0, name: "photo",
-      matte: null, threshold: 50, feather: 2, busy: false,
-    };
-  }
-  return state.cutout;
-}
-
-function syncCutoutMode() {
-  const on = state.category === "cutout";
-  const aside = document.querySelector("aside.controls");
-  const stage = document.querySelector("section.stage-panel");
-  if (aside) aside.classList.toggle("mode-cutout", on);
-  if (stage) stage.classList.toggle("mode-cutout", on);
-  document.body.classList.toggle("mode-cutout", on);
-  const sec = $("#cutout");
-  if (sec) sec.hidden = !on;
-  syncToolChrome();
-}
-
-/* build the model's input tensor from a 320×320 RGBA frame: CHW order,
- * 0..1 range, ImageNet normalization — the U-2-Net recipe. Pure math. */
-function coBuildTensor(px) {
-  const n = CO_SIZE * CO_SIZE;
-  const out = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) {
-    for (let c = 0; c < 3; c++) {
-      out[c * n + i] = (px[i * 4 + c] / 255 - CO_MEAN[c]) / CO_STD[c];
-    }
-  }
-  return out;
-}
-
-/* the model returns several maps; the first is the fused saliency map.
- * Min-max normalize it into the full 0..255 range (the rembg recipe):
- * the map's own min becomes 0 and its max becomes 255, so even a faint
- * map spans the whole range before the cut / feather sliders threshold
- * it. A flat map (max == min) stays all-zero. The matte is carried in
- * 0..255 from here on. Pure math. */
-function coNormalizeMatte(raw) {
-  const out = new Float32Array(raw.length);
-  let mn = Infinity, mx = -Infinity;
-  for (let i = 0; i < raw.length; i++) {
-    if (raw[i] < mn) mn = raw[i];
-    if (raw[i] > mx) mx = raw[i];
-  }
-  const range = mx - mn;
-  if (!(range > 1e-6)) return out; // flat map — nothing stands out
-  for (let i = 0; i < raw.length; i++) out[i] = ((raw[i] - mn) / range) * 255;
-  return out;
-}
-
-/* apply a matte (one 0..255 value per pixel) to source pixels.
- * threshold (0..100) sets the cut point; feather (0..24) widens the
- * soft band around it. Returns fresh RGBA bytes — the source is never
- * modified. Pure math: the sliders re-run this on every input event
- * without touching the model. */
-function coComposite(srcData, matte, threshold, feather) {
-  const out = new Uint8ClampedArray(srcData);
-  const t = threshold / 100;
-  const soft = feather <= 0 ? 0 : 0.02 + (feather / 24) * 0.23;
-  for (let i = 0; i < matte.length; i++) {
-    const m = matte[i] / 255;
-    let a;
-    if (soft <= 0) {
-      a = m >= t ? 1 : 0;
-    } else {
-      a = (m - t) / (2 * soft) + 0.5;
-      if (a < 0) a = 0; else if (a > 1) a = 1;
-    }
-    out[i * 4 + 3] = Math.round(srcData[i * 4 + 3] * a);
-  }
-  return out;
-}
-
-/* stretch the 320×320 matte onto the working frame with canvas
- * smoothing — the bilinear pass doubles as a first edge softener */
-function coUpsampleMatte(matte, w, h) {
-  const small = document.createElement("canvas");
-  small.width = CO_SIZE; small.height = CO_SIZE;
-  const sctx = small.getContext("2d");
-  const id = sctx.createImageData(CO_SIZE, CO_SIZE);
-  for (let i = 0; i < matte.length; i++) {
-    const v = Math.max(0, Math.min(255, Math.round(matte[i])));
-    id.data[i * 4] = v; id.data[i * 4 + 1] = v; id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255;
-  }
-  sctx.putImageData(id, 0, 0);
-  const big = document.createElement("canvas");
-  big.width = w; big.height = h;
-  const bctx = big.getContext("2d", { willReadFrequently: true });
-  bctx.imageSmoothingEnabled = true;
-  bctx.imageSmoothingQuality = "high";
-  bctx.drawImage(small, 0, 0, w, h);
-  const px = bctx.getImageData(0, 0, w, h).data;
-  const out = new Float32Array(w * h);
-  for (let i = 0; i < out.length; i++) out[i] = px[i * 4]; // stays 0..255
-  return out;
-}
-
-function coStatus(msg) {
-  const ro = $("#coReadout");
-  if (ro) ro.textContent = msg;
-}
-
-/* v8.13: real model-download progress — the bar is driven only by the
- * aiLoadSession fraction (network bytes); inference has no honest %
- * and shows stage text alone. Same scaleX fill as the Upscale bar. */
-function coProgress(frac) {
-  const row = $("#coProgressRow"), bar = $("#coProgressBar");
-  if (!row || !bar) return;
-  if (frac === null || frac === undefined) {
-    row.hidden = true;
-    bar.style.transform = "scaleX(0)";
-    return;
-  }
-  row.hidden = false;
-  bar.style.transform = "scaleX(" + Math.max(0, Math.min(1, frac)) + ")";
-}
-
-function coDraw() {
-  const C = coState();
-  const cv = $("#coCanvas");
-  if (!cv || !C.src) return;
-  const ctx = cv.getContext("2d");
-  if (!C.matte) {
-    ctx.drawImage(C.srcCv, 0, 0);
-    coStatus(C.name + " · " + C.src.w + " × " + C.src.h + " · ready — hit Remove background");
-    return;
-  }
-  const out = coComposite(C.src.data, C.matte, C.threshold, C.feather);
-  ctx.putImageData(new ImageData(out, C.src.w, C.src.h), 0, 0);
-  coStatus(C.name + " · " + C.src.w + " × " + C.src.h + " · background removed — tune cut / feather, then Export PNG");
-}
-
-/* the built-in test card: a chunky robot on a simple scene — bold solid
- * shapes with hard edges, so the subject pops from the backdrop and the
- * cutout is easy to judge. Drawn in code, zero downloads. */
-function coMakeSample() {
-  const w = 480, h = 360;
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  const c = cv.getContext("2d");
-  // sky, sun, hills, ground
-  const sky = c.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0, "#7db3e8"); sky.addColorStop(1, "#dceefb");
-  c.fillStyle = sky; c.fillRect(0, 0, w, h);
-  c.fillStyle = "#ffd94d";
-  c.beginPath(); c.arc(410, 56, 29, 0, 7); c.fill();
-  c.fillStyle = "#93cf72";
-  c.beginPath(); c.arc(56, 388, 190, 0, 7); c.fill();
-  c.beginPath(); c.arc(436, 400, 215, 0, 7); c.fill();
-  c.fillStyle = "#79ba58"; c.fillRect(0, 320, w, 40);
-  c.fillStyle = "#22303c";
-  c.font = "700 20px system-ui, sans-serif";
-  c.fillText("beep boop!", 24, 42);
-  // robot — legs + feet
-  c.fillStyle = "#3d4b5c";
-  c.fillRect(208, 262, 24, 44); c.fillRect(248, 262, 24, 44);
-  c.fillStyle = "#222a33";
-  c.fillRect(200, 300, 40, 13); c.fillRect(240, 300, 40, 13);
-  // arms + hands
-  c.fillStyle = "#3d4b5c";
-  c.fillRect(158, 172, 24, 74); c.fillRect(298, 172, 24, 74);
-  c.fillStyle = "#f2b13d";
-  c.beginPath(); c.arc(170, 254, 13, 0, 7); c.fill();
-  c.beginPath(); c.arc(310, 254, 13, 0, 7); c.fill();
-  // body + chest light
-  c.fillStyle = "#e2543e"; c.fillRect(186, 164, 108, 104);
-  c.fillStyle = "#ffd94d"; c.fillRect(214, 192, 52, 42);
-  c.fillStyle = "#22303c"; c.fillRect(232, 206, 16, 14);
-  // neck + head + antenna
-  c.fillStyle = "#3d4b5c"; c.fillRect(227, 146, 26, 20);
-  c.strokeStyle = "#22303c"; c.lineWidth = 5;
-  c.beginPath(); c.moveTo(240, 62); c.lineTo(240, 82); c.stroke();
-  c.fillStyle = "#e2543e";
-  c.beginPath(); c.arc(240, 54, 9, 0, 7); c.fill();
-  c.fillStyle = "#9fb4c7"; c.fillRect(188, 82, 104, 66);
-  c.strokeRect(188, 82, 104, 66);
-  c.strokeRect(186, 164, 108, 104);
-  // eyes + mouth
-  [[218, 110], [262, 110]].forEach(([ex, ey]) => {
-    c.fillStyle = "#fff";
-    c.beginPath(); c.arc(ex, ey, 11, 0, 7); c.fill();
-    c.fillStyle = "#22303c";
-    c.beginPath(); c.arc(ex, ey, 5, 0, 7); c.fill();
-  });
-  c.fillRect(222, 130, 36, 6);
-  return cv;
-}
-
-/* bring an image in (file, paste, drop or the sample) and make it the
- * working photo. Working size is capped at 1024px on the long edge —
- * plenty for a matte composite, and the sliders stay instant. */
-function coLoadSource(img, name) {
-  const C = coState();
-  const scale = Math.min(1, 1024 / Math.max(img.width, img.height));
-  const w = Math.max(1, Math.round(img.width * scale));
-  const h = Math.max(1, Math.round(img.height * scale));
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  const cx2 = cv.getContext("2d", { willReadFrequently: true });
-  cx2.drawImage(img, 0, 0, w, h);
-  const id = cx2.getImageData(0, 0, w, h);
-  C.src = { data: id.data, w, h };
-  C.srcCv = cv;
-  C.imgW = img.width; C.imgH = img.height;
-  C.matte = null;
-  C.name = name || "photo";
-  if (img.close) img.close();
-  const view = $("#coCanvas");
-  if (view) { view.width = w; view.height = h; }
-  const empty = $("#coEmpty");
-  if (empty) empty.hidden = true;
-  const coExp = $("#coExport");
-  if (coExp) coExp.disabled = true;
-  coDraw();
-}
-
-async function coLoadFile(file) {
-  if (!file) return;
-  try {
-    const bmp = await createImageBitmap(file);
-    coLoadSource(bmp, file.name || "photo");
-  } catch (err) {
-    coStatus("couldn't read that image — try a PNG or JPG.");
-  }
-}
-
-function coSetBusy(b) {
-  const C = coState();
-  C.busy = b;
-  const run = $("#coRun");
-  if (run) {
-    run.disabled = b;
-    run.textContent = b ? "Working…" : "Remove background";
-  }
-}
-
-async function coRun() {
-  const C = coState();
-  if (!C.src) { coStatus("Load a photo or the sample first."); return; }
-  if (C.busy) return;
-  coSetBusy(true);
-  const retryBtn = $("#coRetry");
-  if (retryBtn) retryBtn.hidden = true;
-  /* the model download gets its own failure path (v8.13): if the
-   * download is what broke, the fix is a button that retries just the
-   * load — a failed load is never cached, so the re-run picks up
-   * exactly there; inference failures stay a plain status line */
-  let session;
-  try {
-    coStatus("Downloading the Cutout model — about 4.4 MB, once only…");
-    session = await aiLoadSession(CUTOUT_MODEL_URL, (p) => {
-      if (p < 1) {
-        coProgress(p);
-        coStatus("Downloading the Cutout model — " + Math.round(p * 100) + "%");
-      } else coProgress(null);
-    });
-  } catch (err) {
-    coProgress(null);
-    coStatus("Cutout model download failed: " + humanErr(err));
-    if (retryBtn) retryBtn.hidden = false;
-    coSetBusy(false);
-    return;
-  }
-  try {
-    coStatus("Removing background… (" + session.backend + ")");
-    /* the model eats a square 320×320 frame — the aspect squash is fine
-     * for a saliency matte; it is stretched back onto the real frame */
-    const small = document.createElement("canvas");
-    small.width = CO_SIZE; small.height = CO_SIZE;
-    const sctx = small.getContext("2d", { willReadFrequently: true });
-    sctx.drawImage(C.srcCv, 0, 0, CO_SIZE, CO_SIZE);
-    const tensor = coBuildTensor(sctx.getImageData(0, 0, CO_SIZE, CO_SIZE).data);
-    const feeds = {};
-    feeds[session.inputNames[0]] = { data: tensor, dims: [1, 3, CO_SIZE, CO_SIZE] };
-    const results = await session.run(feeds);
-    const raw = results[session.outputNames[0]];
-    if (!raw || !raw.data) throw new Error("the model returned nothing");
-    let matte = coNormalizeMatte(raw.data);
-    if (matte.length === CO_SIZE * CO_SIZE) {
-      matte = coUpsampleMatte(matte, C.src.w, C.src.h);
-    }
-    C.matte = matte;
-    coDraw();
-    const coExp2 = $("#coExport");
-    if (coExp2) coExp2.disabled = false;
-  } catch (err) {
-    coStatus("Cutout failed: " + humanErr(err));
-  }
-  coSetBusy(false);
-}
-
-function coExportPNG() {
-  const C = coState();
-  if (!C.src) { coStatus("Load a photo or the sample first."); return; }
-  if (!C.matte) { coStatus("Remove the background first."); return; }
-  const cv = document.createElement("canvas");
-  cv.width = C.src.w; cv.height = C.src.h;
-  const out = coComposite(C.src.data, C.matte, C.threshold, C.feather);
-  cv.getContext("2d").putImageData(new ImageData(out, C.src.w, C.src.h), 0, 0);
-  downloadCanvas(cv, "m4ster-cutout-" + C.src.w + "x" + C.src.h + ".png");
-}
-
-/* ---------------- Cutout Lab wiring ---------------- */
-
-let coStaticWired = false;
-
-function coWireStage() {
-  // drag & drop onto the stage box
-  const box = $("#coStageBox");
-  if (box) {
-    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.add("co-over");
-    }));
-    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.remove("co-over");
-    }));
-    box.addEventListener("drop", (e) => {
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) coLoadFile(f);
-    });
-  }
-  // paste an image while the Cutout lane is open
-  document.addEventListener("paste", (e) => {
-    if (state.category !== "cutout") return;
-    const items = (e.clipboardData && e.clipboardData.items) || [];
-    for (const it of items) {
-      if (it.type && it.type.indexOf("image/") === 0) {
-        const f = it.getAsFile();
-        if (f) { coLoadFile(f); e.preventDefault(); }
-        return;
-      }
-    }
-  });
-}
-
-function wireCutout() {
-  $("#coSample").onclick = () => coLoadSource(coMakeSample(), "sample robot");
-  $("#coPick").onclick = () => $("#coFile").click();
-  $("#coFile").onchange = (e) => {
-    coLoadFile(e.target.files[0]);
-    e.target.value = "";
-  };
-  $("#coRun").onclick = coRun;
-  const coRetryBtn = $("#coRetry");
-  if (coRetryBtn) coRetryBtn.onclick = () => { coRetryBtn.hidden = true; coRun(); };
-  $("#coExport").onclick = coExportPNG;
-  $("#coExport").disabled = !coState().matte;
-  const th = $("#coThreshold"), fe = $("#coFeather");
-  if (th) th.oninput = () => {
-    const C = coState();
-    C.threshold = +th.value;
-    const v = $("#coThresholdVal");
-    if (v) v.textContent = th.value;
-    if (C.matte) coDraw();
-  };
-  if (fe) fe.oninput = () => {
-    const C = coState();
-    C.feather = +fe.value;
-    const v = $("#coFeatherVal");
-    if (v) v.textContent = fe.value + "px";
-    if (C.matte) coDraw();
-  };
-  if (!coStaticWired) {
-    coStaticWired = true;
-    coWireStage();
-  }
-  syncCutoutMode();
-}
-
-/* ================= v8.4: Upscale Lab — AI enlargement =================
- * FrameLab's own upscaler. A compact super-resolution model
- * (realesr-general-x4v3 from the Real-ESRGAN project, BSD-3-Clause)
- * runs entirely on the visitor's device through the shared AI runtime
- * above: the image never leaves the browser, there is no server and no
- * login. The model eats a fixed 128×128 frame and returns 512×512, so
- * bigger images run as overlapping tiles whose outputs are blended
- * with a feathered running average — no visible seams. A non-AI Pixel
- * mode (nearest-neighbour plus a hand-rolled EPX filter) covers pixel
- * art, which AI upscalers only smear. */
-
-const UPSCALE_MODEL_URL = "assets/models/realesr-x4v3.onnx";
-const UP_TILE = 128;  // the model's fixed input frame
-const UP_SCALE = 4;   // the model's fixed enlargement
-const UP_HALO = 16;   // input px of neighbour context blended per tile
-const UP_CAP = 1024;  // working cap on the long edge, same as Cutout
-
-function upState() {
-  if (!state.upscale) {
-    state.upscale = {
-      src: null, srcCv: null, imgW: 0, imgH: 0, name: "image",
-      out: null, outKind: "", mode: "ai",
-      pxScale: 2, pxAlgo: "nearest", exportScale: 4,
-      compare: 50, busy: false, cancel: false,
-    };
-  }
-  return state.upscale;
-}
-
-function syncUpscaleMode() {
-  const on = state.category === "upscale";
-  const aside = document.querySelector("aside.controls");
-  const stage = document.querySelector("section.stage-panel");
-  if (aside) aside.classList.toggle("mode-upscale", on);
-  if (stage) stage.classList.toggle("mode-upscale", on);
-  document.body.classList.toggle("mode-upscale", on);
-  const sec = $("#upscale");
-  if (sec) sec.hidden = !on;
-  syncToolChrome();
-}
-
-/* ---- tiling math (pure) ----
- * Cores partition the image exactly; each tile's 128×128 window is its
- * core grown by UP_HALO of context on every side. Windows may start
- * negative or run past the far edge — extraction replicates the edge
- * pixels into the overhang. */
-function upTilePlan(w, h) {
-  const step = UP_TILE - 2 * UP_HALO;
-  const tiles = [];
-  for (let cy = 0; cy < h; cy += step) {
-    for (let cx = 0; cx < w; cx += step) {
-      tiles.push({
-        cx, cy,
-        cw: Math.min(step, w - cx), ch: Math.min(step, h - cy),
-        sx: cx - UP_HALO, sy: cy - UP_HALO,
-      });
-    }
-  }
-  return tiles;
-}
-
-/* blend weight along one axis at source-space position g for a window
- * starting at `start`: 1 deep inside, ramping to 0 across 2×HALO at an
- * edge that has a neighbour; an edge on the image border keeps 1. */
-function upAxisWeight(start, imgSize, g) {
-  const F = 2 * UP_HALO;
-  let a = 1;
-  if (start > 0) a = Math.min(a, (g - start) / F);
-  if (start + UP_TILE < imgSize) a = Math.min(a, (start + UP_TILE - g) / F);
-  return a < 0 ? 0 : a > 1 ? 1 : a;
-}
-
-/* a tile's blend weight at one source-space point. Pure math. */
-function upTileWeight(tile, w, h, gx, gy) {
-  return upAxisWeight(tile.sx, w, gx) * upAxisWeight(tile.sy, h, gy);
-}
-
-/* the same weights sampled across one output tile (512 values per
- * axis) — the blend loop uses these instead of recomputing per pixel.
- * Identical values to upTileWeight by construction. Pure math. */
-function upTileWeights1D(tile, w, h) {
-  const OT = UP_TILE * UP_SCALE;
-  const wx = new Float32Array(OT), wy = new Float32Array(OT);
-  for (let o = 0; o < OT; o++) {
-    wx[o] = upAxisWeight(tile.sx, w, tile.sx + o / UP_SCALE);
-    wy[o] = upAxisWeight(tile.sy, h, tile.sy + o / UP_SCALE);
-  }
-  return { wx, wy };
-}
-
-function upClamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
-
-/* build the model's input tensor from a 128×128 RGBA frame: CHW
- * order, 0..1 range, no normalization — the Real-ESRGAN recipe. */
-function upBuildTensor(px) {
-  const n = UP_TILE * UP_TILE;
-  const out = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) {
-    for (let c = 0; c < 3; c++) out[c * n + i] = px[i * 4 + c] / 255;
-  }
-  return out;
-}
-
-/* replicate the valid rect's edge pixels over the rest of a square
- * tile buffer (the part of the window that hangs past the image).
- * Source pixels are only ever read from inside the valid rect, which
- * is never written — so one in-place pass is exact. Pure math. */
-function upFillEdges(data, size, vx0, vy0, vw, vh) {
-  const vx1 = vx0 + vw - 1, vy1 = vy0 + vh - 1;
-  for (let y = 0; y < size; y++) {
-    const sy = y < vy0 ? vy0 : y > vy1 ? vy1 : y;
-    for (let x = 0; x < size; x++) {
-      if (x >= vx0 && x <= vx1 && y >= vy0 && y <= vy1) continue;
-      const sx = x < vx0 ? vx0 : x > vx1 ? vx1 : x;
-      const s = (sy * size + sx) * 4, d = (y * size + x) * 4;
-      data[d] = data[s]; data[d + 1] = data[s + 1];
-      data[d + 2] = data[s + 2]; data[d + 3] = data[s + 3];
-    }
-  }
-}
-
-/* EPX / Scale2×: every pixel becomes a 2×2 block; a corner borrows a
- * neighbour's colour when the two neighbours along that edge agree
- * and the opposite ones differ, which turns jagged diagonals into
- * smooth ones. Colour equality is on the packed RGBA value, edges
- * replicate. Hand-rolled — no library. Pure math. */
-function upEpxPass(data, w, h) {
-  const ow = w * 2;
-  const out = new Uint8ClampedArray(ow * h * 2 * 4);
-  const src = new Uint32Array(data.buffer, data.byteOffset, w * h);
-  const dst = new Uint32Array(out.buffer);
-  const at = (x, y) => src[
-    Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))
-  ];
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const P = at(x, y), A = at(x, y - 1), B = at(x - 1, y),
-            C = at(x + 1, y), D = at(x, y + 1);
-      const o = (y * 2) * ow + x * 2;
-      dst[o]            = (B === A && B !== D && A !== C) ? A : P;
-      dst[o + 1]        = (A === C && A !== B && C !== D) ? C : P;
-      dst[o + ow]       = (B === D && B !== A && D !== C) ? B : P;
-      dst[o + ow + 1]   = (D === C && D !== B && C !== A) ? C : P;
-    }
-  }
-  return out;
-}
-
-/* ---- stage + drawing ---- */
-
-function upStatus(msg) {
-  const ro = $("#upReadout");
-  if (ro) ro.textContent = msg;
-}
-
-function upProgress(frac) {
-  const row = $("#upProgressRow"), bar = $("#upProgressBar");
-  if (!row || !bar) return;
-  if (frac === null || frac === undefined) {
-    row.hidden = true;
-    bar.style.transform = "scaleX(0)";
-    return;
-  }
-  row.hidden = false;
-  bar.style.transform = "scaleX(" + Math.max(0, Math.min(1, frac)) + ")";
-}
-
-function upDraw(note) {
-  const U = upState();
-  const cv = $("#upCanvas");
-  if (!cv || !U.src) return;
-  const ctx = cv.getContext("2d");
-  if (!U.out) {
-    if (cv.width !== U.src.w) cv.width = U.src.w;
-    if (cv.height !== U.src.h) cv.height = U.src.h;
-    ctx.drawImage(U.srcCv, 0, 0);
-    const row0 = $("#upCompareRow");
-    if (row0) row0.hidden = true;
-    upStatus(U.name + " · " + U.src.w + " × " + U.src.h + " · ready — hit " +
-      (U.mode === "ai" ? "Upscale ×4" : "Enlarge"));
-    return;
-  }
-  const ow = U.out.width, oh = U.out.height;
-  if (cv.width !== ow) cv.width = ow;
-  if (cv.height !== oh) cv.height = oh;
-  ctx.drawImage(U.out, 0, 0);
-  /* before/after: the original covers the left `compare`% of the frame */
-  const split = Math.round(ow * U.compare / 100);
-  if (split > 0) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, split, oh);
-    ctx.clip();
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(U.srcCv, 0, 0, ow, oh);
-    ctx.restore();
-    if (split < ow) {
-      ctx.fillStyle = "rgba(255,255,255,.85)";
-      ctx.fillRect(split - 1, 0, 2, oh);
-    }
-  }
-  const row = $("#upCompareRow");
-  if (row) row.hidden = false;
-  upStatus(U.name + " · " + U.src.w + " × " + U.src.h + " → " + ow + " × " + oh +
-    (U.outKind === "ai" ? " · AI ×4" : " · pixel ×" + (ow / U.src.w)) +
-    " — drag the slider to compare" + (note ? " · " + note : ""));
-}
-
-/* the sample: the Cutout robot card shrunk to a small photo first, so
- * the ×4 has visible work to do. Drawn in code, zero downloads. */
-function upMakeSample() {
-  const big = coMakeSample();
-  const cv = document.createElement("canvas");
-  cv.width = 192; cv.height = 144;
-  const c = cv.getContext("2d");
-  c.imageSmoothingEnabled = true;
-  c.imageSmoothingQuality = "high";
-  c.drawImage(big, 0, 0, cv.width, cv.height);
-  return cv;
-}
-
-/* bring an image in (file, paste, drop or the sample). Working size
- * is capped at 1024px on the long edge, same as Cutout Lab. */
-function upLoadSource(img, name) {
-  const U = upState();
-  if (U.busy) return;
-  const scale = Math.min(1, UP_CAP / Math.max(img.width, img.height));
-  const w = Math.max(1, Math.round(img.width * scale));
-  const h = Math.max(1, Math.round(img.height * scale));
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  const cx2 = cv.getContext("2d", { willReadFrequently: true });
-  cx2.drawImage(img, 0, 0, w, h);
-  U.src = { w, h };
-  U.srcCv = cv;
-  U.imgW = img.width; U.imgH = img.height;
-  U.out = null; U.outKind = "";
-  U.name = name || "image";
-  if (img.close) img.close();
-  const view = $("#upCanvas");
-  if (view) { view.width = w; view.height = h; }
-  const empty = $("#upEmpty");
-  if (empty) empty.hidden = true;
-  const upExp = $("#upExport");
-  if (upExp) upExp.disabled = true;
-  upProgress(null);
-  upDraw();
-}
-
-async function upLoadFile(file) {
-  if (!file) return;
-  try {
-    const bmp = await createImageBitmap(file);
-    upLoadSource(bmp, file.name || "image");
-  } catch (err) {
-    upStatus("couldn't read that image — try a PNG or JPG.");
-  }
-}
-
-/* ---- AI run ---- */
-
-function upSetBusy(b) {
-  const U = upState();
-  U.busy = b;
-  const run = $("#upRun");
-  if (run) run.textContent = b ? "Cancel" : "Upscale ×4";
-}
-
-/* draw one tile's 128×128 window out of the source into tctx; the
- * part of the window that hangs past the image is filled by
- * replicating the nearest edge pixels. */
-function upExtractTile(U, tile, tctx) {
-  const w = U.src.w, h = U.src.h;
-  const dx0 = Math.max(0, -tile.sx), dy0 = Math.max(0, -tile.sy);
-  const sx0 = Math.max(0, tile.sx), sy0 = Math.max(0, tile.sy);
-  const vw = Math.min(UP_TILE - dx0, w - sx0), vh = Math.min(UP_TILE - dy0, h - sy0);
-  tctx.clearRect(0, 0, UP_TILE, UP_TILE);
-  tctx.drawImage(U.srcCv, sx0, sy0, vw, vh, dx0, dy0, vw, vh);
-  if (dx0 > 0 || dy0 > 0 || vw < UP_TILE || vh < UP_TILE) {
-    const id = tctx.getImageData(0, 0, UP_TILE, UP_TILE);
-    upFillEdges(id.data, UP_TILE, dx0, dy0, vw, vh);
-    tctx.putImageData(id, 0, 0);
-  }
-}
-
-/* blend one finished output tile (CHW floats, 512×512) into the
- * result with the feathered running average:
- * out = (out·W + tile·a) / (W + a), W += a — every result pixel is a
- * convex mix of the tiles that cover it, so seams can't darken or
- * gap. Alpha is handled separately by the caller (the model is
- * RGB-only); px alpha bytes are left untouched here. */
-function upBlendTile(px, wsum, ow, oh, tile, w, h, data) {
-  const OT = UP_TILE * UP_SCALE;
-  const n = OT * OT;
-  const wts = upTileWeights1D(tile, w, h);
-  const bx = tile.sx * UP_SCALE, by = tile.sy * UP_SCALE;
-  const x0 = Math.max(0, bx), y0 = Math.max(0, by);
-  const x1 = Math.min(ow, bx + OT), y1 = Math.min(oh, by + OT);
-  for (let Y = y0; Y < y1; Y++) {
-    const oy = Y - by;
-    const wyv = wts.wy[oy];
-    if (wyv <= 0) continue;
-    for (let X = x0; X < x1; X++) {
-      const a = wts.wx[X - bx] * wyv;
-      if (a <= 0) continue;
-      const i = Y * ow + X, j = i * 4, t = oy * OT + (X - bx);
-      const W = wsum[i], nw = W + a;
-      px[j]     = (px[j]     * W + upClamp01(data[t])         * 255 * a) / nw;
-      px[j + 1] = (px[j + 1] * W + upClamp01(data[n + t])     * 255 * a) / nw;
-      px[j + 2] = (px[j + 2] * W + upClamp01(data[2 * n + t]) * 255 * a) / nw;
-      wsum[i] = nw;
-    }
-  }
-}
-
-async function upRun() {
-  const U = upState();
-  if (U.busy) { U.cancel = true; return; } // the run button doubles as Cancel
-  if (!U.src) { upStatus("Load an image or the sample first."); return; }
-  upSetBusy(true);
-  U.cancel = false;
-  const upRetryBtn = $("#upRetry");
-  if (upRetryBtn) upRetryBtn.hidden = true;
-  /* model download = its own failure path (v8.13), same as Cutout:
-   * a broken download earns a Retry download button; the tile phase
-   * below keeps the existing status-only handling */
-  let session;
-  try {
-    upStatus("Downloading the Upscale model — about 5 MB, once only…");
-    session = await aiLoadSession(UPSCALE_MODEL_URL, (p) => {
-      if (p < 1) {
-        upProgress(p);
-        upStatus("Downloading the Upscale model — " + Math.round(p * 100) + "%");
-      } else upProgress(null);
-    });
-  } catch (err) {
-    upProgress(null);
-    upStatus("Upscale model download failed: " + humanErr(err));
-    if (upRetryBtn) upRetryBtn.hidden = false;
-    upSetBusy(false);
-    return;
-  }
-  try {
-    const w = U.src.w, h = U.src.h;
-    const ow = w * UP_SCALE, oh = h * UP_SCALE;
-    const plan = upTilePlan(w, h);
-    const outCv = document.createElement("canvas");
-    outCv.width = ow; outCv.height = oh;
-    const octx = outCv.getContext("2d", { willReadFrequently: true });
-    const id = octx.createImageData(ow, oh);
-    const wsum = new Float32Array(ow * oh);
-    /* the model is RGB-only — alpha rides a plain smooth ×4 pass */
-    const aCv = document.createElement("canvas");
-    aCv.width = ow; aCv.height = oh;
-    const actx = aCv.getContext("2d", { willReadFrequently: true });
-    actx.imageSmoothingEnabled = true;
-    actx.imageSmoothingQuality = "high";
-    actx.drawImage(U.srcCv, 0, 0, ow, oh);
-    const aPx = actx.getImageData(0, 0, ow, oh).data;
-    const tileCv = document.createElement("canvas");
-    tileCv.width = UP_TILE; tileCv.height = UP_TILE;
-    const tctx = tileCv.getContext("2d", { willReadFrequently: true });
-    let doneTiles = 0;
-    for (const tile of plan) {
-      if (U.cancel) throw new Error("cancelled");
-      upExtractTile(U, tile, tctx);
-      const tensor = upBuildTensor(tctx.getImageData(0, 0, UP_TILE, UP_TILE).data);
-      const feeds = {};
-      feeds[session.inputNames[0]] = { data: tensor, dims: [1, 3, UP_TILE, UP_TILE] };
-      const results = await session.run(feeds);
-      const raw = results[session.outputNames[0]];
-      if (!raw || !raw.data) throw new Error("the model returned nothing");
-      upBlendTile(id.data, wsum, ow, oh, tile, w, h, raw.data);
-      doneTiles++;
-      upProgress(doneTiles / plan.length);
-      upStatus("Upscaling… tile " + doneTiles + " of " + plan.length + " (" + session.backend + ")");
-    }
-    for (let i = 0; i < ow * oh; i++) id.data[i * 4 + 3] = aPx[i * 4 + 3];
-    octx.putImageData(id, 0, 0);
-    U.out = outCv;
-    U.outKind = "ai";
-    upProgress(null);
-    upDraw();
-    const upExp2 = $("#upExport");
-    if (upExp2) upExp2.disabled = false;
-  } catch (err) {
-    upProgress(null);
-    upStatus(err && err.message === "cancelled"
-      ? "Upscale cancelled."
-      : "Upscale failed: " + humanErr(err));
-  }
-  upSetBusy(false);
-}
-
-/* ---- Pixel mode run ---- */
-
-function upPixelRun() {
-  const U = upState();
-  if (!U.src) { upStatus("Load an image or the sample first."); return; }
-  const s = U.pxScale;
-  let cv, note = "";
-  if (U.pxAlgo === "epx" && (s === 2 || s === 4)) {
-    const sctx = U.srcCv.getContext("2d", { willReadFrequently: true });
-    let cur = sctx.getImageData(0, 0, U.src.w, U.src.h);
-    const passes = s === 4 ? 2 : 1;
-    for (let p = 0; p < passes; p++) {
-      const out = upEpxPass(cur.data, cur.width, cur.height);
-      cur = new ImageData(out, cur.width * 2, cur.height * 2);
-    }
-    cv = document.createElement("canvas");
-    cv.width = cur.width; cv.height = cur.height;
-    cv.getContext("2d").putImageData(cur, 0, 0);
-  } else {
-    if (U.pxAlgo === "epx") note = "EPX works at ×2 and ×4 — nearest used for ×3";
-    cv = document.createElement("canvas");
-    cv.width = U.src.w * s; cv.height = U.src.h * s;
-    const c = cv.getContext("2d");
-    c.imageSmoothingEnabled = false;
-    c.drawImage(U.srcCv, 0, 0, cv.width, cv.height);
-  }
-  U.out = cv;
-  U.outKind = "pixel";
-  upDraw(note);
-  const upExp3 = $("#upExport");
-  if (upExp3) upExp3.disabled = false;
-}
-
-function upExportPNG() {
-  const U = upState();
-  if (U.busy) return;
-  if (!U.out) { upStatus("Nothing to export yet — upscale something first."); return; }
-  let cv = U.out;
-  if (U.outKind === "ai" && U.exportScale === 2) {
-    const half = document.createElement("canvas");
-    half.width = Math.max(1, Math.round(cv.width / 2));
-    half.height = Math.max(1, Math.round(cv.height / 2));
-    const hc = half.getContext("2d");
-    hc.imageSmoothingEnabled = true;
-    hc.imageSmoothingQuality = "high";
-    hc.drawImage(cv, 0, 0, half.width, half.height);
-    cv = half;
-  }
-  downloadCanvas(cv, "m4ster-upscale-" + cv.width + "x" + cv.height + ".png");
-}
-
-/* ---------------- Upscale Lab wiring ---------------- */
-
-let upStaticWired = false;
-
-function upWireStage() {
-  // drag & drop onto the stage box
-  const box = $("#upStageBox");
-  if (box) {
-    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.add("up-over");
-    }));
-    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.remove("up-over");
-    }));
-    box.addEventListener("drop", (e) => {
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) upLoadFile(f);
-    });
-  }
-  // paste an image while the Upscale lane is open
-  document.addEventListener("paste", (e) => {
-    if (state.category !== "upscale") return;
-    const items = (e.clipboardData && e.clipboardData.items) || [];
-    for (const it of items) {
-      if (it.type && it.type.indexOf("image/") === 0) {
-        const f = it.getAsFile();
-        if (f) { upLoadFile(f); e.preventDefault(); }
-        return;
-      }
-    }
-  });
-}
-
-function wireUpscale() {
-  $("#upSample").onclick = () => upLoadSource(upMakeSample(), "sample robot (small)");
-  $("#upPick").onclick = () => $("#upFile").click();
-  $("#upFile").onchange = (e) => {
-    upLoadFile(e.target.files[0]);
-    e.target.value = "";
-  };
-  $("#upRun").onclick = upRun;
-  const upRetryBtn2 = $("#upRetry");
-  if (upRetryBtn2) upRetryBtn2.onclick = () => { upRetryBtn2.hidden = true; upRun(); };
-  $("#upExport").onclick = upExportPNG;
-  $("#upExport").disabled = !upState().out;
-  $("#upPxApply").onclick = () => { if (!upState().busy) upPixelRun(); };
-  document.querySelectorAll("#upModeSeg .seg-btn").forEach(b => {
-    b.onclick = () => {
-      const U = upState();
-      U.mode = b.dataset.upmode;
-      document.querySelectorAll("#upModeSeg .seg-btn").forEach(x =>
-        x.classList.toggle("active", x === b));
-      const ai = $("#upAiRow"), px = $("#upPixelRow");
-      if (ai) ai.hidden = U.mode !== "ai";
-      if (px) px.hidden = U.mode !== "pixel";
-      if (U.src && !U.out) upDraw();
-    };
-  });
-  const es = $("#upExportScale");
-  if (es) es.onchange = () => { upState().exportScale = +es.value; };
-  const ps = $("#upPxScale");
-  if (ps) ps.onchange = () => { upState().pxScale = +ps.value; };
-  const pa = $("#upPxAlgo");
-  if (pa) pa.onchange = () => { upState().pxAlgo = pa.value; };
-  const cmp = $("#upCompare");
-  if (cmp) cmp.oninput = () => {
-    const U = upState();
-    U.compare = +cmp.value;
-    if (U.out) upDraw();
-  };
-  if (!upStaticWired) {
-    upStaticWired = true;
-    upWireStage();
-  }
-  if (upState().busy) upSetBusy(true);
-  syncUpscaleMode();
-}
-
-/* ================= v8.5: Atlas Packer — loose frames → one sheet =================
- * The inverse of the Slicer: drop in many loose sprite images and get
- * back ONE packed atlas PNG plus an engine-ready manifest. Pure JS —
- * no models, no server, no login; everything runs in the visitor's
- * browser. Packing is a hand-rolled MaxRects packer. Sprites are
- * trimmed of their transparent borders before packing, and every
- * manifest format records the trim, so engines restore each original
- * frame exactly. Identical frames are packed once and listed under
- * every name they arrived with. */
-
-const AT_PNG_NAME = "m4ster-atlas.png";
-
-function atState() {
-  if (!state.atlasPack) {
-    state.atlasPack = {
-      items: [],      // [{ name, cv, data }] — every image the user added
-      packed: null,   // { canvas, frames, w, h, used } after a Pack
-      pad: 2, extrude: true, pot: false, labels: false,
-      format: "json",
-    };
-  }
-  return state.atlasPack;
-}
-
-function syncAtlasMode() {
-  const on = state.category === "atlas";
-  const aside = document.querySelector("aside.controls");
-  const stage = document.querySelector("section.stage-panel");
-  if (aside) aside.classList.toggle("mode-atlas", on);
-  if (stage) stage.classList.toggle("mode-atlas", on);
-  document.body.classList.toggle("mode-atlas", on);
-  const sec = $("#atlas");
-  if (sec) sec.hidden = !on;
-  syncToolChrome();
-}
-
-function atStatus(msg) {
-  const ro = $("#atReadout");
-  if (ro) ro.textContent = msg;
-}
-
-/* ---- pure helpers: hash, trim, power of two ---- */
-
-/* a short stable hash of a pixel buffer (~2000 samples spread over
- * the whole image, seeded with the dimensions). Identical frames
- * hash the same, which is all dedupe needs — a freak collision would
- * merge two near-identical frames, never crash. */
-function atPixelHash(data, w, h) {
-  let h1 = 0x811c9dc5 ^ (w | 0), h2 = 0x01000193 ^ (h | 0);
-  const step = Math.max(1, Math.floor(data.length / 2048));
-  for (let i = 0; i < data.length; i += step) {
-    h1 = Math.imul(h1 ^ data[i], 0x01000193);
-    h2 = Math.imul(h2 + data[i], 0x85ebca6b);
-  }
-  return data.length + ":" + (h1 >>> 0).toString(36) + ":" + (h2 >>> 0).toString(36);
-}
-
-/* the bounding box of the non-transparent pixels of an RGBA buffer,
- * or null when the image is fully transparent. Pure math. */
-function atTrimBox(data, w, h) {
-  let x0 = w, y0 = h, x1 = -1, y1 = -1;
-  for (let y = 0; y < h; y++) {
-    const row = y * w * 4;
-    for (let x = 0; x < w; x++) {
-      if (data[row + x * 4 + 3] > 0) {
-        if (x < x0) x0 = x;
-        if (x > x1) x1 = x;
-        if (y < y0) y0 = y;
-        if (y > y1) y1 = y;
-      }
-    }
-  }
-  if (x1 < 0) return null;
-  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
-}
-
-/* smallest power of two >= n. Pure math. */
-function atNextPot(n) {
-  let p = 1;
-  while (p < n) p *= 2;
-  return p;
-}
-
-/* ---- MaxRects packing (pure) ----
- * Keep a list of free rectangles. Each sprite takes the free rect
- * with the least wasted area (best-area-fit; ties go to the tighter
- * short side), then every free rect it overlaps is split around it
- * and rects contained in others are pruned. Sprites pack as their
- * trimmed size plus padding on every side — the padding lives in the
- * footprint, never in the recorded frame rect. */
-
-function atRectsOverlap(a, b) {
-  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-}
-
-/* is b fully inside a? */
-function atRectContains(a, b) {
-  return b.x >= a.x && b.y >= a.y && b.x + b.w <= a.x + a.w && b.y + b.h <= a.y + a.h;
-}
-
-/* split free rect f around placed rect p: up to four leftovers. */
-function atSplitFree(f, p) {
-  const out = [];
-  if (p.x > f.x) out.push({ x: f.x, y: f.y, w: p.x - f.x, h: f.h });
-  if (p.x + p.w < f.x + f.w) out.push({ x: p.x + p.w, y: f.y, w: f.x + f.w - (p.x + p.w), h: f.h });
-  if (p.y > f.y) out.push({ x: f.x, y: f.y, w: f.w, h: p.y - f.y });
-  if (p.y + p.h < f.y + f.h) out.push({ x: f.x, y: p.y + p.h, w: f.w, h: f.y + f.h - (p.y + p.h) });
-  return out.filter(r => r.w > 0 && r.h > 0);
-}
-
-/* drop free rects that another free rect fully covers (an exact
- * duplicate counts as covered by its earlier twin). */
-function atPruneFree(list) {
-  return list.filter((f, i) => !list.some((g, j) => {
-    if (i === j || !atRectContains(g, f)) return false;
-    const ga = g.w * g.h, fa = f.w * f.h;
-    return ga > fa || j < i;
-  }));
-}
-
-/* place every rect, in the given order, into a binW × binH bin.
- * Returns the placements [{ x, y, w, h, ref }] or null when one
- * rect fits nowhere. */
-function atTryPack(rects, binW, binH) {
-  let free = [{ x: 0, y: 0, w: binW, h: binH }];
-  const placed = [];
-  for (const r of rects) {
-    let best = null, bestWaste = Infinity, bestShort = Infinity;
-    for (const f of free) {
-      if (r.w > f.w || r.h > f.h) continue;
-      const waste = f.w * f.h - r.w * r.h;
-      const short = Math.min(f.w - r.w, f.h - r.h);
-      if (waste < bestWaste || (waste === bestWaste && short < bestShort)) {
-        best = f; bestWaste = waste; bestShort = short;
-      }
-    }
-    if (!best) return null;
-    const p = { x: best.x, y: best.y, w: r.w, h: r.h, ref: r.ref };
-    placed.push(p);
-    const next = [];
-    for (const f of free) {
-      if (!atRectsOverlap(f, p)) { next.push(f); continue; }
-      for (const s of atSplitFree(f, p)) next.push(s);
-    }
-    free = atPruneFree(next);
-  }
-  return placed;
-}
-
-/* pack the unique sprites (tallest first). The bin starts near the
- * square root of the total area and doubles its shorter side until
- * everything fits; the result is then cropped to the used extent
- * (and rounded up to powers of two when `pot` is set — rounding only
- * ever grows the bin, so placements stay valid). */
-function atPackUnique(uniques, pad, pot) {
-  const rects = uniques.map(u => ({ w: u.tw + pad * 2, h: u.th + pad * 2, ref: u }));
-  rects.sort((a, b) => b.h - a.h || b.w - a.w);
-  let totalArea = 0, maxW = 0, maxH = 0;
-  for (const r of rects) {
-    totalArea += r.w * r.h;
-    if (r.w > maxW) maxW = r.w;
-    if (r.h > maxH) maxH = r.h;
-  }
-  const side = Math.max(16, Math.ceil(Math.sqrt(totalArea)));
-  let binW = Math.max(side, maxW), binH = Math.max(side, maxH);
-  let placed = null;
-  for (let tries = 0; tries < 64 && !placed; tries++) {
-    placed = atTryPack(rects, binW, binH);
-    if (!placed) { if (binW <= binH) binW *= 2; else binH *= 2; }
-  }
-  if (!placed) return null;
-  let usedW = 0, usedH = 0;
-  for (const p of placed) {
-    if (p.x + p.w > usedW) usedW = p.x + p.w;
-    if (p.y + p.h > usedH) usedH = p.y + p.h;
-  }
-  return {
-    placed,
-    w: pot ? atNextPot(usedW) : usedW,
-    h: pot ? atNextPot(usedH) : usedH,
-  };
-}
-
-/* ---- stage drawing ---- */
-
-/* paint the packed sheet onto a fresh canvas: each unique sprite
- * once, plus — when extrude is on and there is padding to hold it —
- * a 1px ring that repeats the sprite's edge pixels, so GPU filtering
- * at the frame border samples the sprite itself, not its neighbour.
- * The ring stays inside the sprite's padded footprint, which never
- * overlaps another sprite. */
-function atRenderSheet(A) {
-  const P = A.packed;
-  const cv = document.createElement("canvas");
-  cv.width = P.w; cv.height = P.h;
-  const ctx = cv.getContext("2d");
-  for (const fr of P.frames) {
-    const u = fr.u, sx = u.trim.x, sy = u.trim.y;
-    ctx.drawImage(u.cv, sx, sy, fr.w, fr.h, fr.x, fr.y, fr.w, fr.h);
-    if (A.extrude && A.pad > 0) {
-      const x = fr.x, y = fr.y, w = fr.w, h = fr.h;
-      ctx.drawImage(u.cv, sx, sy, 1, h, x - 1, y, 1, h);                 // left column
-      ctx.drawImage(u.cv, sx + w - 1, sy, 1, h, x + w, y, 1, h);         // right column
-      ctx.drawImage(u.cv, sx, sy, w, 1, x, y - 1, w, 1);                 // top row
-      ctx.drawImage(u.cv, sx, sy + h - 1, w, 1, x, y + h, w, 1);         // bottom row
-      ctx.drawImage(u.cv, sx, sy, 1, 1, x - 1, y - 1, 1, 1);             // corners
-      ctx.drawImage(u.cv, sx + w - 1, sy, 1, 1, x + w, y - 1, 1, 1);
-      ctx.drawImage(u.cv, sx, sy + h - 1, 1, 1, x - 1, y + h, 1, 1);
-      ctx.drawImage(u.cv, sx + w - 1, sy + h - 1, 1, 1, x + w, y + h, 1, 1);
-    }
-  }
-  return cv;
-}
-
-function atDraw() {
-  const A = atState();
-  const view = $("#atCanvas");
-  const empty = $("#atEmpty");
-  if (!view) return;
-  const ctx = view.getContext("2d");
-  if (!A.items.length) {
-    view.width = 480; view.height = 360;
-    ctx.clearRect(0, 0, view.width, view.height);
-    if (empty) empty.hidden = false;
-    atStatus("");
-    return;
-  }
-  if (empty) empty.hidden = true;
-  if (!A.packed) {
-    const first = A.items[0];
-    view.width = first.cv.width; view.height = first.cv.height;
-    ctx.drawImage(first.cv, 0, 0);
-    atStatus(A.items.length + " sprite" + (A.items.length === 1 ? "" : "s") + " loaded — hit Pack.");
-    return;
-  }
-  const P = A.packed;
-  view.width = P.w; view.height = P.h;
-  ctx.drawImage(P.canvas, 0, 0);
-  if (A.labels) {
-    /* preview-only overlay — the exported PNG stays clean */
-    ctx.font = "10px sans-serif";
-    for (const fr of P.frames) {
-      ctx.strokeStyle = "rgba(255,255,255,.65)";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(fr.x + .5, fr.y + .5, Math.max(0, fr.w - 1), Math.max(0, fr.h - 1));
-      if (fr.w >= 28 && fr.h >= 14) {
-        const label = fr.u.names[0];
-        const tw = ctx.measureText(label).width;
-        ctx.fillStyle = "rgba(0,0,0,.55)";
-        ctx.fillRect(fr.x + 1, fr.y + 1, tw + 6, 13);
-        ctx.fillStyle = "#fff";
-        ctx.fillText(label, fr.x + 4, fr.y + 11);
-      }
-    }
-  }
-  const pct = Math.round(P.used / (P.w * P.h) * 100);
-  atStatus(A.items.length + " sprites · " + P.frames.length + " unique · atlas " +
-    P.w + " × " + P.h + " · " + pct + "% filled" +
-    (P.skipped ? " · " + P.skipped + " fully transparent, skipped" : ""));
-}
-
-/* ---- image intake ---- */
-
-function atAddImage(img, name) {
-  const A = atState();
-  const cv = document.createElement("canvas");
-  cv.width = img.width; cv.height = img.height;
-  const cx = cv.getContext("2d", { willReadFrequently: true });
-  cx.drawImage(img, 0, 0);
-  const data = cx.getImageData(0, 0, cv.width, cv.height).data;
-  A.items.push({ name: name || "image", cv, data });
-  if (img.close) img.close();
-  A.packed = null;
-  const atExpP = $("#atExportPng"), atExpM = $("#atExportManifest");
-  if (atExpP) atExpP.disabled = true;
-  if (atExpM) atExpM.disabled = true;
-  atDraw();
-}
-
-async function atLoadFiles(files) {
-  const list = [...(files || [])].filter(f => !f.type || f.type.indexOf("image/") === 0);
-  if (!list.length) return;
-  let added = 0;
-  for (const f of list) {
-    try {
-      const bmp = await createImageBitmap(f);
-      atAddImage(bmp, (f.name || "image").replace(/\.[a-z0-9]+$/i, ""));
-      added++;
-    } catch (err) { /* one unreadable file — skip it, keep the rest */ }
-  }
-  if (added) atStatus(atState().items.length + " sprites loaded — hit Pack.");
-  else atStatus("couldn't read those files — try PNG or JPG images.");
-}
-
-/* ---- the Pack action: trim, dedupe, pack, paint ---- */
-
-function atPack() {
-  const A = atState();
-  if (!A.items.length) { atStatus("Add some images first."); return; }
-  const byHash = new Map();
-  const uniques = [];
-  let skipped = 0;
-  for (const it of A.items) {
-    const hash = atPixelHash(it.data, it.cv.width, it.cv.height);
-    const u0 = byHash.get(hash);
-    if (u0) { u0.names.push(it.name); continue; }
-    const trim = atTrimBox(it.data, it.cv.width, it.cv.height);
-    if (!trim) { skipped++; continue; }
-    const u = { cv: it.cv, trim, tw: trim.w, th: trim.h, names: [it.name] };
-    byHash.set(hash, u);
-    uniques.push(u);
-  }
-  if (!uniques.length) { atStatus("every image was fully transparent — nothing to pack."); return; }
-  const res = atPackUnique(uniques, A.pad, A.pot);
-  if (!res) { atStatus("packing failed — try fewer or smaller sprites."); return; }
-  const frames = res.placed.map(p => ({
-    u: p.ref, x: p.x + A.pad, y: p.y + A.pad, w: p.ref.tw, h: p.ref.th,
-  }));
-  const used = uniques.reduce((s, u) => s + u.tw * u.th, 0);
-  A.packed = { canvas: null, frames, w: res.w, h: res.h, used, skipped };
-  A.packed.canvas = atRenderSheet(A);
-  atDraw();
-  const atExpP2 = $("#atExportPng"), atExpM2 = $("#atExportManifest");
-  if (atExpP2) atExpP2.disabled = false;
-  if (atExpM2) atExpM2.disabled = false;
-}
-
-/* ---- manifests (pure string builders) ---- */
-
-/* one entry per sprite NAME — duplicates share their packed rect,
- * and a name that arrives twice gets a " 2", " 3"… suffix so no
- * manifest entry can silently overwrite another. */
-function atFrameList(A) {
-  const out = [];
-  const seen = new Map();
-  for (const fr of A.packed.frames) {
-    for (const name of fr.u.names) {
-      const n = (seen.get(name) || 0) + 1;
-      seen.set(name, n);
-      out.push({ name: n === 1 ? name : name + " " + n, fr });
-    }
-  }
-  return out;
-}
-
-/* TexturePacker JSON (hash format): frame rect + the trim record
- * (spriteSourceSize / sourceSize) engines use to restore the
- * original sprite. Frame keys carry the .png extension, TexturePacker
- * style. */
-function atBuildJSON(A) {
-  const frames = {};
-  for (const e of atFrameList(A)) {
-    const fr = e.fr, u = fr.u;
-    frames[e.name + ".png"] = {
-      frame: { x: fr.x, y: fr.y, w: fr.w, h: fr.h },
-      rotated: false,
-      trimmed: u.trim.x !== 0 || u.trim.y !== 0 || u.tw !== u.cv.width || u.th !== u.cv.height,
-      spriteSourceSize: { x: u.trim.x, y: u.trim.y, w: u.tw, h: u.th },
-      sourceSize: { w: u.cv.width, h: u.cv.height },
-      pivot: { x: 0.5, y: 0.5 },
-    };
-  }
-  return {
-    frames,
-    meta: {
-      app: "m4ster FrameLab — Atlas Packer",
-      version: "1.0",
-      image: AT_PNG_NAME,
-      format: "RGBA8888",
-      size: { w: A.packed.w, h: A.packed.h },
-      scale: "1",
-    },
-  };
-}
-
-/* .tpsheet (TexturePacker 40300) for the Unity and Godot importers.
- * Sprite line: name;x;y;w;h;pivotX;pivotY;0;0;0;0 — the pivot is a
- * normalised offset from the frame centre (±2 scale), computed so
- * the ORIGINAL untrimmed sprite's centre stays the pivot: trimming
- * shifts the pivot instead of losing it. */
-function atTpsheet(A, godot) {
-  const P = A.packed;
-  const lines = [
-    "#",
-    "# Sprite sheet data for " + (godot ? "Godot" : "Unity") + " — packed by m4ster FrameLab (Atlas Packer).",
-    "#",
-    ":format=40300",
-    ":texture=" + AT_PNG_NAME,
-    ":size=" + P.w + "x" + P.h,
-    ":pivotpoints=enabled",
-    ":borders=disabled",
-    "",
-  ];
-  for (const e of atFrameList(A)) {
-    const fr = e.fr, u = fr.u;
-    const px = ((u.cv.width / 2 - u.trim.x) - fr.w / 2) / fr.w * 2;
-    const py = (((u.trim.y + fr.h) - u.cv.height / 2) - fr.h / 2) / fr.h * 2;
-    lines.push([e.name, fr.x, fr.y, fr.w, fr.h,
-      px.toFixed(6), py.toFixed(6), 0, 0, 0, 0].join(";"));
-  }
-  return lines.join("\n") + "\n";
-}
-
-function atExportPNG() {
-  const A = atState();
-  if (!A.packed) { atStatus("Pack something first."); return; }
-  downloadCanvas(A.packed.canvas, AT_PNG_NAME);
-}
-
-function atExportManifest() {
-  const A = atState();
-  if (!A.packed) { atStatus("Pack something first."); return; }
-  if (A.format === "json") downloadJSON(atBuildJSON(A), "m4ster-atlas.json");
-  else downloadBytes(new TextEncoder().encode(atTpsheet(A, A.format === "godot")), "m4ster-atlas.tpsheet", "text/plain");
-}
-
-/* ---------------- Atlas Packer wiring ---------------- */
-
-let atStaticWired = false;
-
-function atWireStage() {
-  // drag & drop onto the stage box — many files at once
-  const box = $("#atStageBox");
-  if (box) {
-    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.add("at-over");
-    }));
-    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.remove("at-over");
-    }));
-    box.addEventListener("drop", (e) => {
-      const fs = e.dataTransfer && e.dataTransfer.files;
-      if (fs && fs.length) atLoadFiles(fs);
-    });
-  }
-  // paste images while the Atlas lane is open
-  document.addEventListener("paste", (e) => {
-    if (state.category !== "atlas") return;
-    const items = (e.clipboardData && e.clipboardData.items) || [];
-    const files = [];
-    for (const it of items) {
-      if (it.type && it.type.indexOf("image/") === 0) {
-        const f = it.getAsFile();
-        if (f) files.push(f);
-      }
-    }
-    if (files.length) { atLoadFiles(files); e.preventDefault(); }
-  });
-}
-
-function wireAtlas() {
-  const A = atState();
-  $("#atPick").onclick = () => $("#atFile").click();
-  $("#atFile").onchange = (e) => {
-    atLoadFiles(e.target.files);
-    e.target.value = "";
-  };
-  $("#atClear").onclick = () => {
-    A.items = [];
-    A.packed = null;
-    const atExpP3 = $("#atExportPng"), atExpM3 = $("#atExportManifest");
-    if (atExpP3) atExpP3.disabled = true;
-    if (atExpM3) atExpM3.disabled = true;
-    atDraw();
-  };
-  $("#atPack").onclick = atPack;
-  $("#atExportPng").onclick = atExportPNG;
-  $("#atExportManifest").onclick = atExportManifest;
-  $("#atExportPng").disabled = $("#atExportManifest").disabled = !atState().packed;
-  const repack = () => { if (A.packed) atPack(); };
-  const pad = $("#atPad");
-  if (pad) pad.oninput = () => {
-    A.pad = +pad.value;
-    const v = $("#atPadVal");
-    if (v) v.textContent = pad.value + "px";
-    repack();
-  };
-  const ex = $("#atExtrude");
-  if (ex) ex.onchange = () => { A.extrude = ex.checked; repack(); };
-  const pot = $("#atPot");
-  if (pot) pot.onchange = () => { A.pot = pot.checked; repack(); };
-  const lb = $("#atLabels");
-  if (lb) lb.onchange = () => { A.labels = lb.checked; atDraw(); };
-  const fmt = $("#atFormat");
-  if (fmt) fmt.onchange = () => { A.format = fmt.value; };
-  if (!atStaticWired) {
-    atStaticWired = true;
-    atWireStage();
-  }
-  if (A.items.length) atDraw();
-  syncAtlasMode();
-}
-
-/* ================= v8.7: Normal Map Lab — flat sprite → lit sprite =================
- * Drop in a flat sprite or texture and get back the maps a 2D engine
- * needs for dynamic lighting: a tangent-space normal map, an ambient
- * occlusion map and a specular map, all derived from one height field.
- * The height comes from the image brightness, or from its alpha
- * channel in silhouette mode (a cutout sprite gets a bevelled edge).
- * Sampling wraps around the edges, so tileable textures stay seamless.
- * Pure JS — no models, no server, no login. */
-
-const NM_CAP = 1024;  // working cap on the long edge, same as Cutout Lab
-
-function nmState() {
-  if (!state.normalmap) {
-    state.normalmap = {
-      src: null,        // { data, w, h } working pixels (<= NM_CAP)
-      imgW: 0, imgH: 0, // original dimensions, for the readout
-      name: "image",
-      view: "normal",   // normal | lit | ao | spec — what the stage shows
-      strength: 100,    // normal strength, percent (100 -> slope x2)
-      smooth: 1,        // height-field blur radius, px
-      alphaMode: false, // height from alpha (silhouette) instead of brightness
-      wrap: true,       // wrap-aware sampling (seamless tiles)
-      flipY: false,     // false = OpenGL (Y+), true = DirectX (Y-)
-      maps: null,       // { normal, ao, spec } canvases + raw buffers
-      light: { x: 90, y: 80 },  // lit-preview light spot, canvas coords
-    };
-  }
-  return state.normalmap;
-}
-
-function syncNormalmapMode() {
-  const on = state.category === "normalmap";
-  const aside = document.querySelector("aside.controls");
-  const stage = document.querySelector("section.stage-panel");
-  if (aside) aside.classList.toggle("mode-normalmap", on);
-  if (stage) stage.classList.toggle("mode-normalmap", on);
-  document.body.classList.toggle("mode-normalmap", on);
-  const sec = $("#normalmap");
-  if (sec) sec.hidden = !on;
-  syncToolChrome();
-}
-
-function nmStatus(msg) {
-  const ro = $("#nmReadout");
-  if (ro) ro.textContent = msg;
-}
-
-/* ---- pure math: height field, blur, and the three maps ---- */
-
-/* sample the height field at (x, y). With wrap on, coordinates wrap
- * around the edges (the left edge reads the right side) — that is
- * what keeps a tileable texture seamless. Without it, edges clamp. */
-function nmSampleH(hf, w, h, x, y, wrap) {
-  if (wrap) {
-    x = ((x % w) + w) % w;
-    y = ((y % h) + h) % h;
-  } else {
-    x = Math.max(0, Math.min(w - 1, x));
-    y = Math.max(0, Math.min(h - 1, y));
-  }
-  return hf[y * w + x];
-}
-
-/* the height field: one 0..1 height per pixel, from brightness —
- * or from the alpha channel in silhouette mode, where a sprite's
- * shape itself becomes the relief. */
-function nmHeightField(data, w, h, alphaMode) {
-  const out = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    const a = i * 4;
-    out[i] = alphaMode
-      ? data[a + 3] / 255
-      : (0.2126 * data[a] + 0.7152 * data[a + 1] + 0.0722 * data[a + 2]) / 255;
-  }
-  return out;
-}
-
-/* one box-blur pass over the height field (rows or columns) using
- * prefix sums, so the cost stays flat whatever the radius. Sampling
- * follows the same wrap/clamp rule as everything else. */
-function nmBlurPass(src, w, h, radius, wrap, horizontal) {
-  const n = horizontal ? w : h;      // length of one line
-  const lines = horizontal ? h : w;  // how many lines
-  const win = 2 * radius + 1;
-  const ext = new Float64Array(n + 2 * radius + 1);  // prefix sums, line extended by radius each side
-  const out = new Float32Array(src.length);
-  for (let line = 0; line < lines; line++) {
-    ext[0] = 0;
-    for (let t = 0; t < n + 2 * radius; t++) {
-      let idx = t - radius;
-      if (wrap) idx = ((idx % n) + n) % n;
-      else idx = Math.max(0, Math.min(n - 1, idx));
-      ext[t + 1] = ext[t] + (horizontal ? src[line * w + idx] : src[idx * w + line]);
-    }
-    for (let i = 0; i < n; i++) {
-      const v = (ext[i + win] - ext[i]) / win;
-      if (horizontal) out[line * w + i] = v; else out[i * w + line] = v;
-    }
-  }
-  return out;
-}
-
-/* blur the height field by radius px (0 = untouched): a horizontal
- * pass then a vertical one. Two passes of the wide AO blur below are
- * what make its falloff soft instead of boxy. */
-function nmBlurHeight(hf, w, h, radius, wrap) {
-  if (radius <= 0 || hf.length === 0) return hf;
-  return nmBlurPass(nmBlurPass(hf, w, h, radius, wrap, true), w, h, radius, wrap, false);
-}
-
-/* Sobel gradients over the height field -> tangent-space normals.
- * strength scales the slope (0 = a perfectly flat, neutral map).
- * flipY flips ONLY the green channel: OpenGL (Y+) vs DirectX (Y-). */
-function nmNormalMap(hf, w, h, strength, wrap, flipY) {
-  const out = new Uint8ClampedArray(w * h * 4);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const tl = nmSampleH(hf, w, h, x - 1, y - 1, wrap), tc = nmSampleH(hf, w, h, x, y - 1, wrap), tr = nmSampleH(hf, w, h, x + 1, y - 1, wrap);
-      const ml = nmSampleH(hf, w, h, x - 1, y, wrap), mr = nmSampleH(hf, w, h, x + 1, y, wrap);
-      const bl = nmSampleH(hf, w, h, x - 1, y + 1, wrap), bc = nmSampleH(hf, w, h, x, y + 1, wrap), br = nmSampleH(hf, w, h, x + 1, y + 1, wrap);
-      const gx = (tr + 2 * mr + br) - (tl + 2 * ml + bl);  // height rising to the right
-      const gy = (bl + 2 * bc + br) - (tl + 2 * tc + tr);  // height rising downward (image rows)
-      let nx = -gx * strength;
-      let ny = (flipY ? -gy : gy) * strength;
-      const len = Math.hypot(nx, ny, 1) || 1;
-      nx /= len; ny /= len;
-      const nz = 1 / len;
-      const a = (y * w + x) * 4;
-      out[a] = Math.round((nx * 0.5 + 0.5) * 255);
-      out[a + 1] = Math.round((ny * 0.5 + 0.5) * 255);
-      out[a + 2] = Math.round((nz * 0.5 + 0.5) * 255);
-      out[a + 3] = 255;
-    }
-  }
-  return out;
-}
-
-/* ambient occlusion, kept simple and honest: blur the height field
- * wide, then darken any pixel that sits BELOW its blurred
- * neighbourhood — grooves and crevices trap light, raised areas and
- * flat fields stay fully bright. Greyscale RGBA. */
-function nmAoMap(hf, w, h, wrap) {
-  const r = Math.max(2, Math.round(Math.min(w, h) / 16));
-  const soft = nmBlurHeight(nmBlurHeight(hf, w, h, r, wrap), w, h, r, wrap);
-  const out = new Uint8ClampedArray(w * h * 4);
-  for (let i = 0; i < w * h; i++) {
-    const below = Math.max(0, soft[i] - hf[i]);
-    const v = Math.round(255 * Math.max(0, 1 - below * 4));
-    const a = i * 4;
-    out[a] = v; out[a + 1] = v; out[a + 2] = v; out[a + 3] = 255;
-  }
-  return out;
-}
-
-/* specular (smoothness) map: higher ground reads as smoother and
- * shinier, low ground as rough. Greyscale RGBA. */
-function nmSpecMap(hf, w, h) {
-  const out = new Uint8ClampedArray(w * h * 4);
-  for (let i = 0; i < w * h; i++) {
-    const v = Math.round(255 * (0.2 + 0.8 * hf[i]));
-    const a = i * 4;
-    out[a] = v; out[a + 1] = v; out[a + 2] = v; out[a + 3] = 255;
-  }
-  return out;
-}
-
-/* the lit preview: shade the source image with its normal map under
- * one light at (lx, ly) — diffuse falloff plus a specular glint
- * weighted by the specular map. ySign bridges the green-channel
- * convention: OpenGL normals store "up" as +green while image rows
- * run downward. Pure per-pixel math. */
-function nmShadeLit(src, nrm, spec, w, h, lx, ly, ySign) {
-  const out = new Uint8ClampedArray(src.length);
-  const lz = Math.max(w, h) * 0.75;  // light height above the picture
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const a = (y * w + x) * 4;
-      let dx = lx - x, dy = (ly - y) * ySign, dz = lz;
-      const dl = Math.hypot(dx, dy, dz) || 1;
-      dx /= dl; dy /= dl; dz /= dl;
-      const nx = nrm[a] / 255 * 2 - 1, ny = nrm[a + 1] / 255 * 2 - 1, nz = nrm[a + 2] / 255 * 2 - 1;
-      const diff = Math.max(0, nx * dx + ny * dy + nz * dz);
-      let hx = dx, hy = dy, hz = dz + 1;  // half-vector: view is straight down +z
-      const hl = Math.hypot(hx, hy, hz) || 1;
-      hx /= hl; hy /= hl; hz /= hl;
-      const ndh = Math.max(0, nx * hx + ny * hy + nz * hz);
-      const sp = Math.pow(ndh, 24) * (spec[a] / 255) * 0.7;
-      const shade = 0.3 + 0.7 * diff;
-      out[a] = Math.min(255, src[a] * shade + sp * 255);
-      out[a + 1] = Math.min(255, src[a + 1] * shade + sp * 255);
-      out[a + 2] = Math.min(255, src[a + 2] * shade + sp * 255);
-      out[a + 3] = src[a + 3];
-    }
-  }
-  return out;
-}
-
-/* ---- DOM side: canvases, loading, drawing, export ---- */
-
-function nmCanvasFrom(buf, w, h) {
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  cv.getContext("2d").putImageData(new ImageData(buf, w, h), 0, 0);
-  return cv;
-}
-
-/* rebuild all three maps from the current settings, then redraw.
- * The normal map keeps the sprite's own alpha, so a cutout sprite's
- * normal map keeps its shape in the engine. */
-function nmRecompute() {
-  const N = nmState();
-  if (!N.src) return;
-  const { data, w, h } = N.src;
-  let hf = nmHeightField(data, w, h, N.alphaMode);
-  hf = nmBlurHeight(hf, w, h, N.smooth, N.wrap);
-  const nrm = nmNormalMap(hf, w, h, N.strength / 50, N.wrap, N.flipY);
-  for (let i = 0; i < w * h; i++) nrm[i * 4 + 3] = data[i * 4 + 3];
-  const spec = nmSpecMap(hf, w, h);
-  N.maps = {
-    normal: nmCanvasFrom(nrm, w, h),
-    ao: nmCanvasFrom(nmAoMap(hf, w, h, N.wrap), w, h),
-    spec: nmCanvasFrom(spec, w, h),
-    nrmData: nrm, specData: spec,
-  };
-  nmDraw();
-}
-
-function nmDraw() {
-  const N = nmState();
-  const view = $("#nmCanvas");
-  if (!view || !N.src || !N.maps) return;
-  const { w, h } = N.src;
-  if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
-  const ctx = view.getContext("2d");
-  if (N.view === "lit") {
-    const lit = nmShadeLit(N.src.data, N.maps.nrmData, N.maps.specData, w, h,
-      N.light.x, N.light.y, N.flipY ? 1 : -1);
-    ctx.putImageData(new ImageData(lit, w, h), 0, 0);
-  } else {
-    ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(N.maps[N.view], 0, 0);
-  }
-  const names = { normal: "normal map", lit: "lit preview", ao: "AO map", spec: "specular map" };
-  nmStatus(N.name + " · " + w + " × " + h + " · " + names[N.view] +
-    (N.view === "normal" ? (N.flipY ? " · DirectX (Y−)" : " · OpenGL (Y+)") : ""));
-}
-
-/* the sample: a greyscale medallion with clear relief — a shaded rim,
- * a beaded edge, a domed disc and an embossed star — drawn on
- * transparency, so both height modes have something to bite on. */
-function nmMakeSample() {
-  const s = 256, cv = document.createElement("canvas");
-  cv.width = s; cv.height = s;
-  const c = cv.getContext("2d");
-  const cx = s / 2, cy = s / 2;
-  const rim = c.createRadialGradient(cx - 30, cy - 30, 20, cx, cy, 118);
-  rim.addColorStop(0, "#f4f4f4"); rim.addColorStop(0.55, "#9a9a9a");
-  rim.addColorStop(0.85, "#4a4a4a"); rim.addColorStop(1, "#2e2e2e");
-  c.fillStyle = rim;
-  c.beginPath(); c.arc(cx, cy, 116, 0, Math.PI * 2); c.fill();
-  c.fillStyle = "#cfcfcf";
-  for (let i = 0; i < 24; i++) {
-    const a = i / 24 * Math.PI * 2;
-    c.beginPath(); c.arc(cx + Math.cos(a) * 100, cy + Math.sin(a) * 100, 7, 0, Math.PI * 2); c.fill();
-  }
-  const disc = c.createRadialGradient(cx - 24, cy - 24, 8, cx, cy, 88);
-  disc.addColorStop(0, "#e8e8e8"); disc.addColorStop(1, "#6a6a6a");
-  c.fillStyle = disc;
-  c.beginPath(); c.arc(cx, cy, 86, 0, Math.PI * 2); c.fill();
-  c.fillStyle = "#f8f8f8";
-  c.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const a = -Math.PI / 2 + i * Math.PI / 5;
-    const r = i % 2 === 0 ? 52 : 22;
-    const px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r;
-    if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
-  }
-  c.closePath(); c.fill();
-  return cv;
-}
-
-/* bring an image in (file, paste, drop or the sample) and make it
- * the working image, capped at NM_CAP on the long edge so slider
- * changes stay live. */
-function nmLoadSource(img, name) {
-  const N = nmState();
-  const scale = Math.min(1, NM_CAP / Math.max(img.width, img.height));
-  const w = Math.max(1, Math.round(img.width * scale));
-  const h = Math.max(1, Math.round(img.height * scale));
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  const cx2 = cv.getContext("2d", { willReadFrequently: true });
-  cx2.drawImage(img, 0, 0, w, h);
-  const id = cx2.getImageData(0, 0, w, h);
-  N.src = { data: id.data, w, h };
-  N.imgW = img.width; N.imgH = img.height;
-  N.name = name || "image";
-  N.light = { x: Math.round(w * 0.35), y: Math.round(h * 0.3) };
-  if (img.close) img.close();
-  const view = $("#nmCanvas");
-  if (view) { view.width = w; view.height = h; }
-  const empty = $("#nmEmpty");
-  if (empty) empty.hidden = true;
-  nmRecompute();
-  const nmExp = $("#nmExport");
-  if (nmExp) nmExp.disabled = !(N.src && N.maps);
-}
-
-async function nmLoadFile(file) {
-  if (!file) return;
-  try {
-    const bmp = await createImageBitmap(file);
-    nmLoadSource(bmp, file.name || "image");
-  } catch (err) {
-    nmStatus("couldn't read that image — try a PNG or JPG.");
-  }
-}
-
-function nmExportPNG() {
-  const N = nmState();
-  if (!N.src || !N.maps) { nmStatus("Load an image or the sample first."); return; }
-  const { w, h } = N.src;
-  if (N.view === "lit") {
-    const cv = document.createElement("canvas");
-    cv.width = w; cv.height = h;
-    const lit = nmShadeLit(N.src.data, N.maps.nrmData, N.maps.specData, w, h,
-      N.light.x, N.light.y, N.flipY ? 1 : -1);
-    cv.getContext("2d").putImageData(new ImageData(lit, w, h), 0, 0);
-    downloadCanvas(cv, "m4ster-normalmap-lit-" + w + "x" + h + ".png");
-    return;
-  }
-  downloadCanvas(N.maps[N.view], "m4ster-normalmap-" + N.view + "-" + w + "x" + h + ".png");
-}
-
-/* ---------------- Normal Map Lab wiring ---------------- */
-
-let nmStaticWired = false;
-let nmLitQueued = false;
-
-function nmWireStage() {
-  const box = $("#nmStageBox");
-  if (box) {
-    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.add("nm-over");
-    }));
-    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.remove("nm-over");
-    }));
-    box.addEventListener("drop", (e) => {
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) nmLoadFile(f);
-    });
-  }
-  // paste an image while the Normal Map lane is open
-  document.addEventListener("paste", (e) => {
-    if (state.category !== "normalmap") return;
-    const items = (e.clipboardData && e.clipboardData.items) || [];
-    for (const it of items) {
-      if (it.type && it.type.indexOf("image/") === 0) {
-        const f = it.getAsFile();
-        if (f) { nmLoadFile(f); e.preventDefault(); break; }
-      }
-    }
-  });
-  // in Lit view the light follows the pointer over the picture
-  const cv = $("#nmCanvas");
-  if (cv) cv.addEventListener("pointermove", (e) => {
-    const N = nmState();
-    if (!N.src || N.view !== "lit") return;
-    const r = cv.getBoundingClientRect();
-    N.light = {
-      x: (e.clientX - r.left) * cv.width / r.width,
-      y: (e.clientY - r.top) * cv.height / r.height,
-    };
-    if (!nmLitQueued) {
-      nmLitQueued = true;
-      requestAnimationFrame(() => {
-        nmLitQueued = false;
-        if (nmState().view === "lit") nmDraw();
-      });
-    }
-  });
-}
-
-function wireNormalmap() {
-  const N = nmState();
-  $("#nmSample").onclick = () => nmLoadSource(nmMakeSample(), "sample medallion");
-  $("#nmPick").onclick = () => $("#nmFile").click();
-  $("#nmFile").onchange = (e) => {
-    nmLoadFile(e.target.files[0]);
-    e.target.value = "";
-  };
-  document.querySelectorAll("#nmViewSeg .seg-btn").forEach(b => {
-    b.onclick = () => {
-      N.view = b.dataset.nmview;
-      document.querySelectorAll("#nmViewSeg .seg-btn").forEach(x => x.classList.toggle("active", x === b));
-      nmDraw();
-    };
-  });
-  document.querySelectorAll("#nmHeightSeg .seg-btn").forEach(b => {
-    b.onclick = () => {
-      N.alphaMode = b.dataset.nmheight === "alpha";
-      document.querySelectorAll("#nmHeightSeg .seg-btn").forEach(x => x.classList.toggle("active", x === b));
-      nmRecompute();
-    };
-  });
-  document.querySelectorAll("#nmFlipSeg .seg-btn").forEach(b => {
-    b.onclick = () => {
-      N.flipY = b.dataset.nmflip === "dx";
-      document.querySelectorAll("#nmFlipSeg .seg-btn").forEach(x => x.classList.toggle("active", x === b));
-      nmRecompute();
-    };
-  });
-  const st = $("#nmStrength");
-  if (st) st.oninput = () => {
-    N.strength = +st.value;
-    const v = $("#nmStrengthVal");
-    if (v) v.textContent = st.value + "%";
-    nmRecompute();
-  };
-  const sm = $("#nmSmooth");
-  if (sm) sm.oninput = () => {
-    N.smooth = +sm.value;
-    const v = $("#nmSmoothVal");
-    if (v) v.textContent = sm.value + "px";
-    nmRecompute();
-  };
-  const wr = $("#nmWrap");
-  if (wr) wr.onchange = () => { N.wrap = wr.checked; nmRecompute(); };
-  $("#nmExport").onclick = nmExportPNG;
-  $("#nmExport").disabled = !(nmState().src && nmState().maps);
-  if (!nmStaticWired) {
-    nmStaticWired = true;
-    nmWireStage();
-  }
-  if (N.src) nmDraw();
-  syncNormalmapMode();
-}
-
-/* ================= v8.8: Seamless Tiler — texture in, repeat out =================
- * Make any texture tileable and prove it live. The Offset view rolls
- * the texture by half on both axes, so the wrap edges land in the
- * middle where the seams are easy to see. The heal cross-fades the
- * edge bands: inside a band, every pixel blends toward the pixel
- * mirrored from the opposite edge, and the blend peaks at exactly
- * one half on the outermost line — so the first and last columns
- * land on the very same value and the wrap step disappears. The 3x3
- * view repeats the healed texture so any leftover seam shows at
- * once. Pure JS — no models, no server, no login. */
-
-const TL_CAP = 1024;  // working cap on the long edge, same as Normal Map Lab
-
-function tlState() {
-  if (!state.tiler) {
-    state.tiler = {
-      src: null,        // { data, w, h } pristine working pixels (<= TL_CAP)
-      full: null,       // { data, w, h } pristine pixels at original size, for export
-      imgW: 0, imgH: 0, // original dimensions, for the readout
-      name: "texture",
-      view: "single",   // single | offset | grid — what the stage shows
-      strength: 60,     // heal strength, percent of the widest band
-      healed: null,     // healed RGBA buffer at working size
-      healedCv: null,   // the same, as a canvas, for the 3x3 draw
-    };
-  }
-  return state.tiler;
-}
-
-function syncTilerMode() {
-  const on = state.category === "tiler";
-  const aside = document.querySelector("aside.controls");
-  const stage = document.querySelector("section.stage-panel");
-  if (aside) aside.classList.toggle("mode-tiler", on);
-  if (stage) stage.classList.toggle("mode-tiler", on);
-  document.body.classList.toggle("mode-tiler", on);
-  const sec = $("#tiler");
-  if (sec) sec.hidden = !on;
-  syncToolChrome();
-}
-
-function tlStatus(msg) {
-  const ro = $("#tlReadout");
-  if (ro) ro.textContent = msg;
-}
-
-/* ---- pure math: the heal and the offset roll ---- */
-
-/* how wide the cross-fade band is along one axis: the strength
- * slider spends itself on up to a quarter of that dimension, so
- * 100% heals the outer 25% on every side and 0% heals nothing. */
-function tlBand(len, strength) {
-  return Math.round(len * 0.25 * strength / 100);
-}
-
-/* one axis of the heal, in place: inside the two edge bands, blend
- * each pixel toward the pixel mirrored from the opposite edge —
- * pixel i trades with pixel len-1-i, so both edges move toward each
- * other and meet exactly halfway on the outermost line (t = 0.5
- * there), which is what makes the wrap continuous. Pairs are written
- * together so neither side reads a half-blended partner. */
-function tlHealAxis(buf, w, h, band, horizontal) {
-  const len = horizontal ? w : h;    // length of one line
-  const lines = horizontal ? h : w;  // how many lines
-  for (let line = 0; line < lines; line++) {
-    for (let i = 0; i < band && i < len / 2; i++) {
-      const t = 0.5 * (1 - i / band);  // 0.5 at the edge, fading inward
-      const j = len - 1 - i;           // the mirrored pixel, opposite edge
-      const a = (horizontal ? line * w + i : i * w + line) * 4;
-      const b = (horizontal ? line * w + j : j * w + line) * 4;
-      for (let ch = 0; ch < 4; ch++) {
-        const va = buf[a + ch], vb = buf[b + ch];
-        buf[a + ch] = va * (1 - t) + vb * t;
-        buf[b + ch] = vb * (1 - t) + va * t;
-      }
-    }
-  }
-}
-
-/* heal a texture: a horizontal pass, then a vertical one on the
- * result. The vertical pass blends whole columns toward each other,
- * and because the horizontal pass already made every row wrap-clean,
- * equal columns stay equal — the second pass cannot reopen the
- * first seam. Always computed from the pristine source, so dragging
- * the slider back and forth never compounds the blend. */
-function tlHeal(data, w, h, strength) {
-  const out = new Uint8ClampedArray(data);
-  const bw = tlBand(w, strength), bh = tlBand(h, strength);
-  if (bw > 0) tlHealAxis(out, w, h, bw, true);
-  if (bh > 0) tlHealAxis(out, w, h, bh, false);
-  return out;
-}
-
-/* the offset view: roll the texture by half on both axes. The wrap
- * edges land in the middle, where a seam cannot hide. */
-function tlOffset(data, w, h) {
-  const out = new Uint8ClampedArray(data.length);
-  const hw = Math.floor(w / 2), hh = Math.floor(h / 2);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const a = (y * w + x) * 4;
-      const b = (((y + hh) % h) * w + ((x + hw) % w)) * 4;
-      out[a] = data[b]; out[a + 1] = data[b + 1];
-      out[a + 2] = data[b + 2]; out[a + 3] = data[b + 3];
-    }
-  }
-  return out;
-}
-
-/* ---- DOM side: canvases, loading, drawing, export ---- */
-
-function tlCanvasFrom(buf, w, h) {
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  cv.getContext("2d").putImageData(new ImageData(buf, w, h), 0, 0);
-  return cv;
-}
-
-/* recompute the heal from the pristine source at the current
- * strength, then redraw — the slider stays live because the source
- * is never the healed output. */
-function tlRecompute() {
-  const T = tlState();
-  if (!T.src) return;
-  const { data, w, h } = T.src;
-  T.healed = tlHeal(data, w, h, T.strength);
-  T.healedCv = tlCanvasFrom(T.healed, w, h);
-  tlDraw();
-}
-
-function tlDraw() {
-  const T = tlState();
-  const view = $("#tlCanvas");
-  if (!view || !T.src || !T.healed) return;
-  const { w, h } = T.src;
-  if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
-  const ctx = view.getContext("2d");
-  if (T.view === "offset") {
-    ctx.putImageData(new ImageData(tlOffset(T.healed, w, h), w, h), 0, 0);
-  } else if (T.view === "grid") {
-    const tw = w / 3, th = h / 3;
-    for (let gy = 0; gy < 3; gy++) {
-      for (let gx = 0; gx < 3; gx++) ctx.drawImage(T.healedCv, gx * tw, gy * th, tw, th);
-    }
-  } else {
-    ctx.drawImage(T.healedCv, 0, 0);
-  }
-  const names = { single: "healed texture", offset: "offset view — seams in the middle", grid: "3 × 3 repeat" };
-  tlStatus(T.name + " · " + T.imgW + " × " + T.imgH + " · heal " + T.strength + "% · " + names[T.view]);
-}
-
-/* the sample: a stone-ish texture that deliberately does NOT tile —
- * warm sand on the left runs into cool slate on the right, the top
- * sits in shadow and the bottom in light, and soft blotches are
- * clipped by the edges, so every seam is obvious before the heal. */
-function tlMakeSample() {
-  const s = 256, cv = document.createElement("canvas");
-  cv.width = s; cv.height = s;
-  const c = cv.getContext("2d");
-  const across = c.createLinearGradient(0, 0, s, 0);
-  across.addColorStop(0, "#977950"); across.addColorStop(0.5, "#7d7461"); across.addColorStop(1, "#4e6472");
-  c.fillStyle = across;
-  c.fillRect(0, 0, s, s);
-  const down = c.createLinearGradient(0, 0, 0, s);
-  down.addColorStop(0, "rgba(30,26,20,0.45)"); down.addColorStop(0.5, "rgba(0,0,0,0)"); down.addColorStop(1, "rgba(240,235,220,0.35)");
-  c.fillStyle = down;
-  c.fillRect(0, 0, s, s);
-  const tones = ["#8a6f4d", "#5d7263", "#a08b62", "#54626e", "#77644a", "#687d6d"];
-  for (let i = 0; i < 46; i++) {
-    const x = Math.random() * s, y = Math.random() * s, r = 12 + Math.random() * 42;
-    const rg = c.createRadialGradient(x, y, 1, x, y, r);
-    const col = tones[i % tones.length];
-    rg.addColorStop(0, col + "cc"); rg.addColorStop(1, col + "00");
-    c.fillStyle = rg;
-    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
-  }
-  for (let i = 0; i < 900; i++) {
-    c.fillStyle = Math.random() < 0.5 ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.14)";
-    c.fillRect(Math.random() * s, Math.random() * s, 2, 2);
-  }
-  return cv;
-}
-
-/* bring a texture in (file, paste, drop or the sample). The
- * original pixels are kept whole for the export; the working copy
- * is capped at TL_CAP so the heal slider stays live. The heal only
- * ever reads the pristine pixels, never its own output. */
-function tlLoadSource(img, name) {
-  const T = tlState();
-  const fc = document.createElement("canvas");
-  fc.width = img.width; fc.height = img.height;
-  const fx = fc.getContext("2d", { willReadFrequently: true });
-  fx.drawImage(img, 0, 0);
-  const fid = fx.getImageData(0, 0, fc.width, fc.height);
-  T.full = { data: fid.data, w: fc.width, h: fc.height };
-  T.imgW = img.width; T.imgH = img.height;
-  const scale = Math.min(1, TL_CAP / Math.max(img.width, img.height));
-  if (scale < 1) {
-    const w = Math.max(1, Math.round(img.width * scale));
-    const h = Math.max(1, Math.round(img.height * scale));
-    const cv = document.createElement("canvas");
-    cv.width = w; cv.height = h;
-    const cx2 = cv.getContext("2d", { willReadFrequently: true });
-    cx2.drawImage(img, 0, 0, w, h);
-    const id = cx2.getImageData(0, 0, w, h);
-    T.src = { data: id.data, w, h };
-  } else {
-    T.src = T.full;
-  }
-  T.name = name || "texture";
-  if (img.close) img.close();
-  const view = $("#tlCanvas");
-  if (view) { view.width = T.src.w; view.height = T.src.h; }
-  const empty = $("#tlEmpty");
-  if (empty) empty.hidden = true;
-  tlRecompute();
-  const tlExp = $("#tlExport");
-  if (tlExp) tlExp.disabled = false;
-}
-
-async function tlLoadFile(file) {
-  if (!file) return;
-  try {
-    const bmp = await createImageBitmap(file);
-    tlLoadSource(bmp, file.name || "texture");
-  } catch (err) {
-    tlStatus("couldn't read that image — try a PNG or JPG.");
-  }
-}
-
-/* export the healed texture at the original resolution: the same
- * heal, run once over the full-size pristine pixels. */
-function tlExportPNG() {
-  const T = tlState();
-  if (!T.full) { tlStatus("Load a texture or the sample first."); return; }
-  const { data, w, h } = T.full;
-  const cv = tlCanvasFrom(tlHeal(data, w, h, T.strength), w, h);
-  downloadCanvas(cv, "m4ster-seamless-" + w + "x" + h + ".png");
-}
-
-/* ---------------- Seamless Tiler wiring ---------------- */
-
-let tlStaticWired = false;
-
-function tlWireStage() {
-  const box = $("#tlStageBox");
-  if (box) {
-    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.add("tl-over");
-    }));
-    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.remove("tl-over");
-    }));
-    box.addEventListener("drop", (e) => {
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) tlLoadFile(f);
-    });
-  }
-  // paste an image while the Tiler lane is open
-  document.addEventListener("paste", (e) => {
-    if (state.category !== "tiler") return;
-    const items = (e.clipboardData && e.clipboardData.items) || [];
-    for (const it of items) {
-      if (it.type && it.type.indexOf("image/") === 0) {
-        const f = it.getAsFile();
-        if (f) { tlLoadFile(f); e.preventDefault(); break; }
-      }
-    }
-  });
-}
-
-function wireTiler() {
-  const T = tlState();
-  $("#tlSample").onclick = () => tlLoadSource(tlMakeSample(), "sample stone");
-  $("#tlPick").onclick = () => $("#tlFile").click();
-  $("#tlFile").onchange = (e) => {
-    tlLoadFile(e.target.files[0]);
-    e.target.value = "";
-  };
-  document.querySelectorAll("#tlViewSeg .seg-btn").forEach(b => {
-    b.onclick = () => {
-      T.view = b.dataset.tlview;
-      document.querySelectorAll("#tlViewSeg .seg-btn").forEach(x => x.classList.toggle("active", x === b));
-      tlDraw();
-    };
-  });
-  const st = $("#tlStrength");
-  if (st) st.oninput = () => {
-    T.strength = +st.value;
-    const v = $("#tlStrengthVal");
-    if (v) v.textContent = st.value + "%";
-    tlRecompute();
-  };
-  $("#tlExport").onclick = tlExportPNG;
-  $("#tlExport").disabled = !tlState().full;
-  if (!tlStaticWired) {
-    tlStaticWired = true;
-    tlWireStage();
-  }
-  if (T.src) tlDraw();
-  syncTilerMode();
-}
-
-/* ================= v8.9: Palette Lab — colors out, swaps, variants =================
- * Pull the palette out of any sprite, swap colors, and spin off
- * recolor variants (team colors, enemy tiers, skins). Extraction
- * counts the exact colors first — real sprites use few enough that
- * they usually get their true palette back untouched — and only
- * photos fall through to a median-cut quantize capped at 16. A swap
- * replaces the picked color (a Tolerance slider feathers the
- * replacement across nearby shades, so anti-aliased edges don't
- * fringe), and the variant chips rotate the PALETTE's hues and
- * repaint the sprite through it, so flat colors stay flat. Fully
- * transparent pixels are ignored by the palette and never modified
- * by anything. Pure JS — no models, no server, no login. */
-
-const PL_CAP = 1024;      // working cap on the long edge, same as Normal Map Lab
-const PL_MAX_COLORS = 16; // a sprite palette, not a photo histogram
-
-function plState() {
-  if (!state.palette) {
-    state.palette = {
-      src: null,        // { data, w, h } pristine working pixels (<= PL_CAP)
-      imgW: 0, imgH: 0, // original dimensions, for the readout
-      name: "sprite",
-      work: null,       // { data, w, h } current pixels, after swaps/variants
-      colors: [],       // extracted palette: [{ r, g, b, count }] most-used first
-      fromIdx: -1,      // palette index picked as the swap source (-1 = none)
-      toHex: "#3fa7ff", // swap target, from the color input
-      tolerance: 0,     // 0-64 RGB-distance allowance around the picked color
-      undo: [],         // stack of earlier work buffers (newest last)
-    };
-  }
-  return state.palette;
-}
-
-function syncPaletteMode() {
-  const on = state.category === "palette";
-  const aside = document.querySelector("aside.controls");
-  const stage = document.querySelector("section.stage-panel");
-  if (aside) aside.classList.toggle("mode-palette", on);
-  if (stage) stage.classList.toggle("mode-palette", on);
-  document.body.classList.toggle("mode-palette", on);
-  const sec = $("#palette");
-  if (sec) sec.hidden = !on;
-  syncToolChrome();
-}
-
-function plStatus(msg) {
-  const ro = $("#plReadout");
-  if (ro) ro.textContent = msg;
-}
-
-/* ---- color helpers ---- */
-
-function plHex(c) {
-  const h = (n) => n.toString(16).padStart(2, "0");
-  return "#" + h(c.r) + h(c.g) + h(c.b);
-}
-
-function plParseHex(str) {
-  const n = parseInt(String(str).replace("#", ""), 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-
-/* RGB -> HSL with h in degrees [0,360), s and l in [0,1] */
-function plRgbToHsl(r, g, b) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  if (max === min) return { h: 0, s: 0, l };
-  const d = max - min;
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h;
-  if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
-  else if (max === g) h = (b - r) / d + 2;
-  else h = (r - g) / d + 4;
-  return { h: h * 60, s, l };
-}
-
-function plHslToRgb(h, s, l) {
-  h = ((h % 360) + 360) % 360 / 360;
-  if (s === 0) { const v = Math.round(l * 255); return { r: v, g: v, b: v }; }
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  const pick = (t) => {
-    if (t < 0) t += 1;
-    if (t > 1) t -= 1;
-    if (t < 1 / 6) return p + (q - p) * 6 * t;
-    if (t < 1 / 2) return q;
-    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-    return p;
-  };
-  return {
-    r: Math.round(pick(h + 1 / 3) * 255),
-    g: Math.round(pick(h) * 255),
-    b: Math.round(pick(h - 1 / 3) * 255),
-  };
-}
-
-/* rotate one color's hue by deg degrees; greys and pure black/white
- * have no hue to spin, so they map to themselves. */
-function plRotateHue(c, deg) {
-  const hsl = plRgbToHsl(c.r, c.g, c.b);
-  if (hsl.s === 0) return { r: c.r, g: c.g, b: c.b };
-  const rgb = plHslToRgb(hsl.h + deg, hsl.s, hsl.l);
-  return { r: rgb.r, g: rgb.g, b: rgb.b };
-}
-
-/* ---- palette extraction ---- */
-
-/* count every visible color exactly. Fully transparent pixels are
- * skipped — their RGB is meaningless padding in most files. */
-function plCountColors(data) {
-  const map = new Map();
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] === 0) continue;
-    const key = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
-    const hit = map.get(key);
-    if (hit) hit.count++;
-    else map.set(key, { r: data[i], g: data[i + 1], b: data[i + 2], count: 1 });
-  }
-  return [...map.values()];
-}
-
-/* the channel span of one median-cut box, and which channel is widest */
-function plBoxRange(box) {
-  let rMin = 255, rMax = 0, gMin = 255, gMax = 0, bMin = 255, bMax = 0;
-  for (const c of box) {
-    if (c.r < rMin) rMin = c.r; if (c.r > rMax) rMax = c.r;
-    if (c.g < gMin) gMin = c.g; if (c.g > gMax) gMax = c.g;
-    if (c.b < bMin) bMin = c.b; if (c.b > bMax) bMax = c.b;
-  }
-  const spans = [rMax - rMin, gMax - gMin, bMax - bMin];
-  let chan = 0;
-  if (spans[1] > spans[chan]) chan = 1;
-  if (spans[2] > spans[chan]) chan = 2;
-  return { range: spans[chan], chan };
-}
-
-/* one box -> one palette color: the count-weighted average, so the
- * representative sits where the pixels actually are. */
-function plBoxColor(box) {
-  let r = 0, g = 0, b = 0, count = 0;
-  for (const c of box) {
-    r += c.r * c.count; g += c.g * c.count; b += c.b * c.count;
-    count += c.count;
-  }
-  return { r: Math.round(r / count), g: Math.round(g / count), b: Math.round(b / count), count };
-}
-
-/* median-cut quantize: keep splitting the widest box at its pixel
- * median until the cap is reached. Deterministic — same input,
- * same palette, every time. */
-function plMedianCut(colors, maxColors) {
-  const CH = ["r", "g", "b"];
-  const boxes = [colors.slice()];
-  while (boxes.length < maxColors) {
-    let pick = -1, pickRange = 0, pickChan = 0;
-    boxes.forEach((box, i) => {
-      if (box.length < 2) return;
-      const { range, chan } = plBoxRange(box);
-      if (range > pickRange) { pickRange = range; pick = i; pickChan = chan; }
-    });
-    if (pick < 0) break;  // nothing left that can split
-    const box = boxes.splice(pick, 1)[0];
-    box.sort((a, b) => a[CH[pickChan]] - b[CH[pickChan]]);
-    let total = 0;
-    for (const c of box) total += c.count;
-    let acc = 0, k = 0;
-    while (k < box.length - 1 && acc < total / 2) { acc += box[k].count; k++; }
-    boxes.push(box.slice(0, k), box.slice(k));
-  }
-  return boxes.map(plBoxColor).sort((a, b) => b.count - a.count);
-}
-
-/* the palette of a pixel buffer, most-used color first. Sprites
- * with <= maxColors visible colors get them back EXACTLY — counts
- * and all; only richer images go through median-cut. */
-function plExtractPalette(data, maxColors) {
-  const counted = plCountColors(data);
-  if (counted.length <= maxColors) {
-    return counted.sort((a, b) => b.count - a.count);
-  }
-  return plMedianCut(counted, maxColors);
-}
-
-/* ---- the two recolors ---- */
-
-/* swap `from` for `to`. Tolerance 0 = exact matches only. Above 0,
- * pixels within tolerance swap fully, and a feather band one
- * tolerance wide beyond that blends toward `to`, fading with
- * distance — anti-aliased edges follow the swap instead of
- * fringing. Alpha is never written; clear pixels are skipped. */
-function plSwapColors(data, from, to, tolerance) {
-  const out = new Uint8ClampedArray(data);
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] === 0) continue;
-    const dr = data[i] - from.r, dg = data[i + 1] - from.g, db = data[i + 2] - from.b;
-    const d = Math.sqrt(dr * dr + dg * dg + db * db);
-    if (tolerance === 0) {
-      if (d === 0) { out[i] = to.r; out[i + 1] = to.g; out[i + 2] = to.b; }
-    } else if (d <= tolerance) {
-      out[i] = to.r; out[i + 1] = to.g; out[i + 2] = to.b;
-    } else if (d < tolerance * 2) {
-      const f = 1 - (d - tolerance) / tolerance;  // 1 at the core rim, 0 at the feather edge
-      out[i]     = data[i]     + (to.r - data[i])     * f;
-      out[i + 1] = data[i + 1] + (to.g - data[i + 1]) * f;
-      out[i + 2] = data[i + 2] + (to.b - data[i + 2]) * f;
-    }
-  }
-  return out;
-}
-
-/* index of the palette color nearest to (r,g,b), plain RGB distance */
-function plNearestIdx(colors, r, g, b) {
-  let best = 0, bestD = Infinity;
-  for (let i = 0; i < colors.length; i++) {
-    const dr = r - colors[i].r, dg = g - colors[i].g, db = b - colors[i].b;
-    const d = dr * dr + dg * dg + db * db;
-    if (d < bestD) { bestD = d; best = i; }
-  }
-  return best;
-}
-
-/* spin every palette hue by deg and repaint through the palette:
- * each pixel keeps its offset from its nearest palette color, so
- * anti-aliasing shades ride along — but two pixels wearing the
- * same palette color always land on the same new color, and flat
- * areas stay exactly flat. Not a whole-image hue filter. */
-function plVariantColors(data, colors, deg) {
-  const out = new Uint8ClampedArray(data);
-  if (!colors.length) return out;
-  const spun = colors.map(c => plRotateHue(c, deg));
-  const cache = new Map();  // packed rgb -> palette index; sprites repeat colors a lot
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] === 0) continue;
-    const r = data[i], g = data[i + 1], b = data[i + 2];
-    const key = (r << 16) | (g << 8) | b;
-    let idx = cache.get(key);
-    if (idx === undefined) { idx = plNearestIdx(colors, r, g, b); cache.set(key, idx); }
-    const base = colors[idx], rot = spun[idx];
-    out[i]     = r + (rot.r - base.r);
-    out[i + 1] = g + (rot.g - base.g);
-    out[i + 2] = b + (rot.b - base.b);
-  }
-  return out;
-}
-
-/* the palette as GIMP .gpl text — one "R G B #hex" line per color */
-function plGplText(colors, name) {
-  const lines = ["GIMP Palette", "Name: FrameLab Palette — " + name, "Columns: 4", "#"];
-  for (const c of colors) lines.push(c.r + " " + c.g + " " + c.b + " " + plHex(c));
-  return lines.join("\n") + "\n";
-}
-
-/* ---- DOM side: canvases, loading, drawing, export ---- */
-
-function plCanvasFrom(buf, w, h) {
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  cv.getContext("2d").putImageData(new ImageData(buf, w, h), 0, 0);
-  return cv;
-}
-
-/* re-extract the palette from the working pixels — after every op
- * the swatches must describe the sprite as it NOW is. */
-function plExtract() {
-  const P = plState();
-  P.colors = P.work ? plExtractPalette(P.work.data, PL_MAX_COLORS) : [];
-  if (P.fromIdx >= P.colors.length) P.fromIdx = -1;
-}
-
-function plDraw() {
-  const P = plState();
-  const view = $("#plCanvas");
-  if (!view || !P.work) return;
-  const { data, w, h } = P.work;
-  if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
-  view.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(data), w, h), 0, 0);
-  plStatus(P.name + " · " + P.imgW + " × " + P.imgH + " · " + P.colors.length +
-    (P.colors.length === 1 ? " color" : " colors"));
-}
-
-/* repaint the panel's palette bits (swatches, swap source, variant
- * chips) from state — called after loads, ops and panel re-renders,
- * because renderParams rebuilds the panel HTML on every lane hop. */
-function plPaintPanel() {
-  const P = plState();
-  const sw = $("#plSwatches");
-  if (sw) {
-    if (!P.colors.length) {
-      sw.innerHTML = `<span class="dim">no sprite loaded yet</span>`;
-    } else {
-      sw.innerHTML = P.colors.map((c, i) =>
-        `<button type="button" class="pl-swatch${i === P.fromIdx ? " active" : ""}" data-pli="${i}" title="swap from ${plHex(c)}"><span class="pl-dot" style="background:${plHex(c)}"></span><span>${plHex(c)}</span><span class="dim">${c.count}</span></button>`
-      ).join("");
-      sw.querySelectorAll(".pl-swatch").forEach(b => {
-        b.onclick = () => {
-          P.fromIdx = +b.dataset.pli;
-          plPaintPanel();
-        };
-      });
-    }
-  }
-  const chip = $("#plFromChip");
-  const hex = $("#plFromHex");
-  const from = P.fromIdx >= 0 ? P.colors[P.fromIdx] : null;
-  if (chip) chip.style.background = from ? plHex(from) : "";
-  if (hex) hex.textContent = from ? plHex(from) : "pick a color above";
-  const undo = $("#plUndo");
-  if (undo) undo.disabled = !P.undo.length;
-  const va = $("#plVariants");
-  if (va) {
-    if (!P.colors.length) {
-      va.innerHTML = `<span class="dim">load a sprite first</span>`;
-    } else {
-      va.innerHTML = [60, 120, 180, 240, 300].map(deg => {
-        const stops = P.colors.slice(0, 4).map(c => plHex(plRotateHue(c, deg))).join(", ");
-        return `<button type="button" class="pl-variant" data-pldeg="${deg}" style="background:linear-gradient(90deg, ${stops})" title="spin the palette hues by ${deg} degrees">+${deg}°</button>`;
-      }).join("");
-      va.querySelectorAll(".pl-variant").forEach(b => {
-        b.onclick = () => plApplyVariant(+b.dataset.pldeg);
-      });
-    }
-  }
-}
-
-/* remember the current pixels so an op can be taken back */
-function plPushUndo() {
-  const P = plState();
-  P.undo.push(new Uint8ClampedArray(P.work.data));
-  if (P.undo.length > 10) P.undo.shift();
-}
-
-function plAfterOp() {
-  plExtract();
-  plDraw();
-  plPaintPanel();
-  const P = plState();
-  const plExp = $("#plExport"), plG = $("#plGpl"), plJ = $("#plJson");
-  if (plExp) plExp.disabled = !P.work;
-  if (plG) plG.disabled = !P.colors.length;
-  if (plJ) plJ.disabled = !P.colors.length;
-}
-
-function plApplySwap() {
-  const P = plState();
-  if (!P.work) { plStatus("Load a sprite or the sample first."); return; }
-  const from = P.colors[P.fromIdx];
-  if (!from) { plStatus("Pick a color from the palette first."); return; }
-  plPushUndo();
-  P.work = { data: plSwapColors(P.work.data, from, plParseHex(P.toHex), P.tolerance), w: P.work.w, h: P.work.h };
-  plAfterOp();
-}
-
-function plApplyVariant(deg) {
-  const P = plState();
-  if (!P.work) { plStatus("Load a sprite or the sample first."); return; }
-  plPushUndo();
-  P.work = { data: plVariantColors(P.work.data, P.colors, deg), w: P.work.w, h: P.work.h };
-  plAfterOp();
-}
-
-function plUndoOp() {
-  const P = plState();
-  const prev = P.undo.pop();
-  if (!prev) return;
-  P.work = { data: prev, w: P.work.w, h: P.work.h };
-  plAfterOp();
-}
-
-/* the sample: a little knight drawn pixel by pixel from a char map,
- * so his palette is exact — a dozen colors including a cheek-shadow
- * blend tone, plus two half-alpha pixels softening the chin (the "a" cells
- * wear the skin color at half alpha, like real anti-aliasing). */
-function plMakeSample() {
-  const INK = {
-    H: [185, 197, 208, 255],  // helmet steel
-    D: [119, 130, 142, 255],  // steel shade
-    P: [216, 64, 64, 255],    // plume red
-    S: [242, 193, 132, 255],  // skin
-    C: [217, 168, 105, 255],  // cheek shadow (blend tone)
-    E: [38, 34, 43, 255],     // eyes
-    T: [58, 111, 216, 255],   // tunic blue
-    U: [42, 79, 158, 255],    // tunic shade
-    G: [242, 197, 49, 255],   // gold trim
-    B: [122, 74, 38, 255],    // belt brown
-    K: [55, 48, 43, 255],     // boots
-    W: [230, 237, 244, 255],  // sword blade
-    a: [242, 193, 132, 128],  // AA edge: skin at half alpha
-  };
-  const MAP = [
-    "........................",
-    ".........PPPP...........",
-    "........PPPPPP..........",
-    ".........PPPP...........",
-    ".......HHHHHHHH.........",
-    "......HHHHHHHHHH........",
-    "......HDHHHHHHDH........",
-    "......HHHHHHHHHH........",
-    ".......SSSSSSSS.........",
-    ".......SESSESSS.........",
-    ".......SSSSSSSS.........",
-    "........SCSSS...........",
-    "........SSSS............",
-    ".......aSSSSa......W....",
-    ".....TTTTTTTTTT...WW....",
-    "....TTTTTTTTTTTT.WW.....",
-    "....UTTTGGGGTTTU.W......",
-    "....UTTTGGGGTTTU........",
-    ".....TTBBBBBBTT.........",
-    ".....TTTTTTTTTT.........",
-    "......TTT..TTT..........",
-    "......UUU..UUU..........",
-    ".....KKKK..KKKK.........",
-    "........................",
-  ];
-  const w = 24, h = MAP.length, scale = 6;
-  const small = document.createElement("canvas");
-  small.width = w; small.height = h;
-  const sx = small.getContext("2d");
-  const id = sx.createImageData(w, h);
-  MAP.forEach((row, y) => {
-    const line = (row + ".".repeat(w)).slice(0, w);
-    for (let x = 0; x < w; x++) {
-      const ink = INK[line[x]];
-      if (!ink) continue;
-      const i = (y * w + x) * 4;
-      id.data[i] = ink[0]; id.data[i + 1] = ink[1]; id.data[i + 2] = ink[2]; id.data[i + 3] = ink[3];
-    }
-  });
-  sx.putImageData(id, 0, 0);
-  const cv = document.createElement("canvas");
-  cv.width = w * scale; cv.height = h * scale;
-  const cx = cv.getContext("2d");
-  cx.imageSmoothingEnabled = false;
-  cx.drawImage(small, 0, 0, cv.width, cv.height);
-  return cv;
-}
-
-/* bring a sprite in (file, paste, drop or the sample). Working
- * pixels are capped at PL_CAP; palette ops are per-pixel, so the
- * export is the working size — the readout always shows the
- * original dimensions too. A new image resets swaps, variants
- * and the undo stack: yesterday's colors are not today's. */
-function plLoadSource(img, name) {
-  const P = plState();
-  const scale = Math.min(1, PL_CAP / Math.max(img.width, img.height));
-  const w = Math.max(1, Math.round(img.width * scale));
-  const h = Math.max(1, Math.round(img.height * scale));
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  const cx = cv.getContext("2d", { willReadFrequently: true });
-  cx.drawImage(img, 0, 0, w, h);
-  const id = cx.getImageData(0, 0, w, h);
-  P.src = { data: id.data, w, h };
-  P.imgW = img.width; P.imgH = img.height;
-  P.name = name || "sprite";
-  P.work = { data: new Uint8ClampedArray(id.data), w, h };
-  P.undo = [];
-  P.fromIdx = -1;
-  if (img.close) img.close();
-  const view = $("#plCanvas");
-  if (view) { view.width = w; view.height = h; }
-  const empty = $("#plEmpty");
-  if (empty) empty.hidden = true;
-  plExtract();
-  plDraw();
-  plPaintPanel();
-  const plExp2 = $("#plExport"), plG2 = $("#plGpl"), plJ2 = $("#plJson");
-  if (plExp2) plExp2.disabled = !P.work;
-  if (plG2) plG2.disabled = !P.colors.length;
-  if (plJ2) plJ2.disabled = !P.colors.length;
-}
-
-async function plLoadFile(file) {
-  if (!file) return;
-  try {
-    const bmp = await createImageBitmap(file);
-    plLoadSource(bmp, file.name || "sprite");
-  } catch (err) {
-    plStatus("couldn't read that image — try a PNG or JPG.");
-  }
-}
-
-function plExportPNG() {
-  const P = plState();
-  if (!P.work) { plStatus("Load a sprite or the sample first."); return; }
-  downloadCanvas(plCanvasFrom(P.work.data, P.work.w, P.work.h),
-    "m4ster-palette-" + P.work.w + "x" + P.work.h + ".png");
-}
-
-function plExportGpl() {
-  const P = plState();
-  if (!P.colors.length) { plStatus("Load a sprite or the sample first."); return; }
-  downloadBytes(new TextEncoder().encode(plGplText(P.colors, P.name)), "m4ster-palette.gpl", "text/plain");
-}
-
-function plExportJson() {
-  const P = plState();
-  if (!P.colors.length) { plStatus("Load a sprite or the sample first."); return; }
-  downloadJSON({
-    name: P.name,
-    colors: P.colors.map(c => ({ hex: plHex(c), r: c.r, g: c.g, b: c.b, count: c.count })),
-  }, "m4ster-palette.json");
-}
-
-/* ---------------- Palette Lab wiring ---------------- */
-
-let plStaticWired = false;
-
-function plWireStage() {
-  const box = $("#plStageBox");
-  if (box) {
-    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.add("pl-over");
-    }));
-    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.remove("pl-over");
-    }));
-    box.addEventListener("drop", (e) => {
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) plLoadFile(f);
-    });
-  }
-  // paste an image while the Palette lane is open
-  document.addEventListener("paste", (e) => {
-    if (state.category !== "palette") return;
-    const items = (e.clipboardData && e.clipboardData.items) || [];
-    for (const it of items) {
-      if (it.type && it.type.indexOf("image/") === 0) {
-        const f = it.getAsFile();
-        if (f) { plLoadFile(f); e.preventDefault(); break; }
-      }
-    }
-  });
-}
-
-function wirePalette() {
-  const P = plState();
-  $("#plSample").onclick = () => plLoadSource(plMakeSample(), "sample knight");
-  $("#plPick").onclick = () => $("#plFile").click();
-  $("#plFile").onchange = (e) => {
-    plLoadFile(e.target.files[0]);
-    e.target.value = "";
-  };
-  const to = $("#plTo");
-  if (to) to.oninput = () => { P.toHex = to.value; };
-  const tol = $("#plTol");
-  if (tol) tol.oninput = () => {
-    P.tolerance = +tol.value;
-    const v = $("#plTolVal");
-    if (v) v.textContent = tol.value;
-  };
-  $("#plApply").onclick = plApplySwap;
-  $("#plUndo").onclick = plUndoOp;
-  $("#plExport").onclick = plExportPNG;
-  $("#plGpl").onclick = plExportGpl;
-  $("#plJson").onclick = plExportJson;
-  $("#plExport").disabled = !plState().work;
-  $("#plGpl").disabled = $("#plJson").disabled = !plState().colors.length;
-  if (!plStaticWired) {
-    plStaticWired = true;
-    plWireStage();
-  }
-  plPaintPanel();
-  if (P.work) plDraw();
-  syncPaletteMode();
-}
-
-/* ================= v8.10: GIF Sheet =================
- * Turn an animated GIF into a sprite sheet: every frame decoded
- * and composited, laid out in a grid, exported as one PNG plus a
- * JSON manifest with each frame's rect and duration.
- *
- * The decoder below is written from the GIF89a spec by hand — no
- * library — because the whole point of this site is that the work
- * happens in your browser. It handles the parts real GIFs use:
- * global and local color tables, transparency, interlacing, frame
- * delays, and the disposal rules that say what happens to the
- * canvas between frames. */
-
-function gfState() {
-  if (!state.gif) {
-    state.gif = {
-      frames: [],      // composited frames: [{ data, duration }] at logical-screen size
-      frameW: 0, frameH: 0, // the GIF's logical screen = one sheet cell
-      name: "animation",
-      cols: 4,         // manual column count (used when autoCols is off)
-      autoCols: true,  // auto = the near-square grid
-    };
-  }
-  return state.gif;
-}
-
-function syncGifMode() {
-  const on = state.category === "gif";
-  const aside = document.querySelector("aside.controls");
-  const stage = document.querySelector("section.stage-panel");
-  if (aside) aside.classList.toggle("mode-gif", on);
-  if (stage) stage.classList.toggle("mode-gif", on);
-  document.body.classList.toggle("mode-gif", on);
-  const sec = $("#gif");
-  if (sec) sec.hidden = !on;
-  syncToolChrome();
-}
-
-function gfStatus(msg) {
-  const ro = $("#gfReadout");
-  if (ro) ro.textContent = msg;
-}
-
-/* ---- the decoder ---- */
-
-/* a cursor over the file's bytes: read one byte, a little-endian
- * 16-bit word, or a run of bytes, without repeating index math.
- * Reading past the end yields undefined/NaN, which the parser
- * treats as "file over" — truncated GIFs stop cleanly. */
-function gfReader(bytes) {
-  let pos = 0;
-  return {
-    byte() { return bytes[pos++]; },
-    word() { const v = bytes[pos] | (bytes[pos + 1] << 8); pos += 2; return v; },
-    take(n) { const out = bytes.subarray(pos, pos + n); pos += n; return out; },
-    skip(n) { pos += n; },
-  };
-}
-
-/* a color table is 3 bytes per color (red, green, blue); its size
- * rides in flag bits as 2^(n+1) colors */
-function gfReadPalette(rd, sizeCode) {
-  const count = 2 << sizeCode;          // sizeCode 0..7 -> 2..256 colors
-  const raw = rd.take(count * 3);
-  const pal = new Array(count);
-  for (let i = 0; i < count; i++) {
-    pal[i] = [raw[i * 3], raw[i * 3 + 1], raw[i * 3 + 2]];
-  }
-  return pal;
-}
-
-/* several GIF chunks are stored as "sub-blocks": a length byte,
- * that many bytes, repeat — ended by a zero length. Skip one run. */
-function gfSkipBlocks(rd) {
-  for (;;) {
-    const n = rd.byte();
-    if (!n) return;
-    rd.skip(n);
-  }
-}
-
-/* GIF's flavor of LZW. Codes are packed LSB-first into the data
- * sub-blocks and widen from (minCodeSize + 1) bits up to 12 bits as
- * the dictionary grows. Two codes are special: "clear" resets the
- * dictionary, "end" stops the stream. The output is one palette
- * index per pixel, in stored row order. */
-function gfLzwDecode(minCodeSize, chunks, expected) {
-  // glue the size-prefixed sub-blocks into one flat byte array
-  let total = 0;
-  for (const c of chunks) total += c.length;
-  const data = new Uint8Array(total);
-  let off = 0;
-  for (const c of chunks) { data.set(c, off); off += c.length; }
-
-  const clear = 1 << minCodeSize;       // e.g. min 8 -> clear = 256
-  const endCode = clear + 1;
-  const out = new Uint8Array(expected);
-  let outLen = 0;
-
-  let dict = null;                      // code -> array of indices
-  let codeSize = 0, nextCode = 0;
-  function resetDict() {
-    dict = [];
-    for (let i = 0; i < clear; i++) dict.push([i]);
-    dict.push(null, null);              // the clear + end slots
-    codeSize = minCodeSize + 1;
-    nextCode = endCode + 1;
-  }
-  resetDict();
-
-  let bitPos = 0;
-  const totalBits = data.length * 8;
-  function readCode() {
-    if (bitPos + codeSize > totalBits) return -1;
-    let v = 0;
-    for (let i = 0; i < codeSize; i++) {
-      const bit = (data[(bitPos + i) >> 3] >> ((bitPos + i) & 7)) & 1;
-      v |= bit << i;
-    }
-    bitPos += codeSize;
-    return v;
-  }
-
-  let prev = null;                      // the previous code's string
-  while (outLen < expected) {
-    const code = readCode();
-    if (code === -1 || code === endCode) break;
-    if (code === clear) { resetDict(); prev = null; continue; }
-    let entry;
-    if (dict[code]) {
-      entry = dict[code];
-    } else if (code === nextCode && prev) {
-      // the famous special case: the string is prev + prev's first
-      entry = prev.concat(prev[0]);
-    } else {
-      break;                            // corrupt stream — keep what we have
-    }
-    for (let i = 0; i < entry.length && outLen < expected; i++) out[outLen++] = entry[i];
-    if (prev && nextCode < 4096) {
-      dict[nextCode++] = prev.concat(entry[0]);
-      // the next code in the stream may be as large as the next
-      // free dictionary slot — the moment that slot outgrows the
-      // current width, the codes that follow are written one bit
-      // wider, so widen in step (12 bits is the format's ceiling)
-      if (nextCode === (1 << codeSize) && codeSize < 12) codeSize++;
-    }
-    prev = entry;
-  }
-  return out.subarray(0, outLen);
-}
-
-/* interlaced GIFs store their rows in four passes — rows 0, 8, 16…,
- * then 4, 12, 20…, then 2, 6, 10…, then the odd rows. Given the
- * stored row number, hand back the real row it belongs to. */
-function gfInterlaceRow(stored, height) {
-  const passes = [[0, 8], [4, 8], [2, 4], [1, 2]];
-  let row = stored;
-  for (let p = 0; p < passes.length; p++) {
-    const start = passes[p][0], step = passes[p][1];
-    const count = Math.ceil((height - start) / step);
-    if (row < count) return start + row * step;
-    row -= count;
-  }
-  return stored;
-}
-
-/* decode a whole GIF. Returns { w, h, frames } where every frame is
- * fully composited onto the logical screen — what you'd see if the
- * animation played — with its display duration in ms. Throws an
- * Error with a short message when the bytes aren't a usable GIF. */
-function gfDecode(bytes) {
-  if (bytes.length < 13 ||
-      bytes[0] !== 0x47 || bytes[1] !== 0x49 || bytes[2] !== 0x46) {  // "GIF"
-    throw new Error("not a GIF file");
-  }
-  const rd = gfReader(bytes);
-  rd.skip(6);                                   // "GIF87a" / "GIF89a"
-  const W = rd.word(), H = rd.word();           // logical screen size
-  if (!(W > 0) || !(H > 0) || W > 8192 || H > 8192) {
-    throw new Error("that GIF's header looks wrong");
-  }
-  const packed = rd.byte();
-  rd.skip(1);                                   // background color index
-  rd.skip(1);                                   // aspect ratio (unused)
-  const gct = (packed & 0x80) ? gfReadPalette(rd, packed & 0x07) : null;
-
-  const canvas = new Uint8ClampedArray(W * H * 4);  // starts transparent
-  const frames = [];
-  let gce = null;        // graphic control waiting for the next image
-  let snapshot = null;   // canvas copy a disposal-3 frame restores to
-
-  for (;;) {
-    const tag = rd.byte();
-    if (tag === 0x3B || tag === undefined) break;   // ";" trailer, or EOF
-    if (tag === 0x21) {                             // extension block
-      const label = rd.byte();
-      if (label === 0xF9) {                         // graphic control
-        rd.byte();                                  // block size (always 4)
-        const p = rd.byte();
-        const delayCs = rd.word();
-        const transIndex = rd.byte();
-        rd.byte();                                  // block terminator
-        gce = {
-          disposal: (p >> 2) & 7,
-          transparent: (p & 1) ? transIndex : -1,
-          // a stored delay of 0 (or 1) is a lie every browser
-          // ignores — they all play it as 100ms, so we report 100
-          duration: delayCs < 2 ? 100 : delayCs * 10,
-        };
-      } else {
-        gfSkipBlocks(rd);   // comments, app data (loop count), plain text…
-      }
-      continue;
-    }
-    if (tag !== 0x2C) break;                        // unknown byte — bail out
-
-    // image descriptor: where this frame sits on the logical screen
-    const fx = rd.word(), fy = rd.word(), fw = rd.word(), fh = rd.word();
-    const ipacked = rd.byte();
-    let palette = gct;
-    if (ipacked & 0x80) palette = gfReadPalette(rd, ipacked & 0x07);
-    const interlaced = (ipacked & 0x40) !== 0;
-    const minCode = rd.byte();
-    const chunks = [];
-    for (;;) {
-      const n = rd.byte();
-      if (!n) break;
-      chunks.push(rd.take(n));
-    }
-    if (!palette || !(fw > 0) || !(fh > 0) || fw * fh > 16777216) break;
-    const indices = gfLzwDecode(minCode, chunks, fw * fh);
-
-    const disposal = gce ? gce.disposal : 0;
-    const transIndex = gce ? gce.transparent : -1;
-    // disposal 3 ("restore to previous") needs the canvas as it was
-    // BEFORE this frame — snapshot before painting, not after
-    if (disposal === 3) snapshot = canvas.slice();
-
-    // paint the frame's pixels. A pixel whose index is the frame's
-    // transparent index leaves the canvas underneath untouched.
-    for (let row = 0; row < fh; row++) {
-      const y = fy + (interlaced ? gfInterlaceRow(row, fh) : row);
-      if (y >= H) continue;
-      for (let x = 0; x < fw; x++) {
-        const px = fx + x;
-        if (px >= W) continue;
-        const idx = indices[row * fw + x];
-        if (idx === undefined || idx === transIndex) continue;
-        const col = palette[idx];
-        if (!col) continue;
-        const o = (y * W + px) * 4;
-        canvas[o] = col[0]; canvas[o + 1] = col[1]; canvas[o + 2] = col[2]; canvas[o + 3] = 255;
-      }
-    }
-
-    frames.push({ data: canvas.slice(), duration: gce ? gce.duration : 100 });
-
-    // …then dispose of this frame, ready for the next one
-    if (disposal === 2) {
-      // restore the frame's rect to the background. The spec says
-      // "background color", but browsers composite GIFs over
-      // transparency — and a sprite sheet wants the alpha — so the
-      // rect goes back to fully transparent.
-      for (let y = fy; y < fy + fh && y < H; y++) {
-        for (let x = fx; x < fx + fw && x < W; x++) {
-          const o = (y * W + x) * 4;
-          canvas[o] = canvas[o + 1] = canvas[o + 2] = canvas[o + 3] = 0;
-        }
-      }
-    } else if (disposal === 3 && snapshot) {
-      canvas.set(snapshot);
-    }
-    gce = null;
-  }
-
-  if (!frames.length) throw new Error("no frames found in that GIF");
-  return { w: W, h: H, frames };
-}
-
-/* grid math for the sheet, shared by the preview, both exports and
- * the readout — what you see is what you download. Auto columns =
- * the near-square grid (same rule as the Atlas packer). */
-function gfLayout(count, frameW, frameH, cols, autoCols) {
-  const c = autoCols ? Math.max(1, Math.ceil(Math.sqrt(count))) : Math.max(1, cols | 0);
-  const rows = Math.max(1, Math.ceil(count / c));
-  return { cols: c, rows, sheetW: c * frameW, sheetH: rows * frameH };
-}
-
-/* lay every composited frame into one sheet canvas */
-function gfSheetCanvas() {
-  const G = gfState();
-  const lay = gfLayout(G.frames.length, G.frameW, G.frameH, G.cols, G.autoCols);
-  const cv = document.createElement("canvas");
-  cv.width = lay.sheetW; cv.height = lay.sheetH;
-  const cx = cv.getContext("2d");
-  G.frames.forEach((f, i) => {
-    const cell = document.createElement("canvas");
-    cell.width = G.frameW; cell.height = G.frameH;
-    cell.getContext("2d").putImageData(new ImageData(f.data, G.frameW, G.frameH), 0, 0);
-    cx.drawImage(cell, (i % lay.cols) * G.frameW, Math.floor(i / lay.cols) * G.frameH);
-  });
-  return { cv, lay };
-}
-
-function gfDraw() {
-  const G = gfState();
-  const view = $("#gfCanvas");
-  if (!view || !G.frames.length) return;
-  const built = gfSheetCanvas();
-  view.width = built.lay.sheetW;
-  view.height = built.lay.sheetH;
-  view.getContext("2d").drawImage(built.cv, 0, 0);
-  gfStatus(G.frames.length + (G.frames.length === 1 ? " frame" : " frames") +
-    " · " + G.frameW + "x" + G.frameH + " each · sheet " +
-    built.lay.sheetW + "x" + built.lay.sheetH);
-}
-
-/* bring a GIF in (file, paste, drop or the sample). A new GIF
- * replaces the old sheet wholesale — frames from two animations
- * never mix. */
-function gfLoadBytes(buf, name) {
-  const G = gfState();
-  let decoded;
-  try {
-    decoded = gfDecode(new Uint8Array(buf));
-  } catch (err) {
-    gfStatus("couldn't decode that GIF — " + humanErr(err) + ".");
-    return;
-  }
-  G.frames = decoded.frames;
-  G.frameW = decoded.w; G.frameH = decoded.h;
-  G.name = name || "animation";
-  const empty = $("#gfEmpty");
-  if (empty) empty.hidden = true;
-  const gfExp = $("#gfExport"), gfJ = $("#gfJson");
-  if (gfExp) gfExp.disabled = false;
-  if (gfJ) gfJ.disabled = false;
-  gfDraw();
-}
-
-async function gfLoadFile(file) {
-  if (!file) return;
-  try {
-    gfLoadBytes(await file.arrayBuffer(), (file.name || "animation").replace(/\.gif$/i, ""));
-  } catch (err) {
-    gfStatus("couldn't read that file.");
-  }
-}
-
-/* the sample bounces in a separate file next to the AI models — it
- * ships with the site, so a miss here means the deploy is behind,
- * not that the visitor did anything wrong */
-async function gfLoadSample() {
-  try {
-    const res = await fetch("assets/samples/sample-bounce.gif");
-    if (!res.ok) throw new Error("missing");
-    gfLoadBytes(await res.arrayBuffer(), "sample bounce");
-  } catch (err) {
-    gfStatus("the sample GIF isn't on the server yet — drop any animated GIF here instead.");
-  }
-}
-
-function gfExportPNG() {
-  const G = gfState();
-  if (!G.frames.length) { gfStatus("Load a GIF or the sample first."); return; }
-  const built = gfSheetCanvas();
-  downloadCanvas(built.cv, "m4ster-gifsheet-" + built.lay.sheetW + "x" + built.lay.sheetH + ".png");
-}
-
-function gfExportJSON() {
-  const G = gfState();
-  if (!G.frames.length) { gfStatus("Load a GIF or the sample first."); return; }
-  const lay = gfLayout(G.frames.length, G.frameW, G.frameH, G.cols, G.autoCols);
-  downloadJSON({
-    frames: G.frames.map((f, i) => ({
-      x: (i % lay.cols) * G.frameW,
-      y: Math.floor(i / lay.cols) * G.frameH,
-      w: G.frameW, h: G.frameH,
-      duration: f.duration,
-    })),
-    meta: {
-      frameCount: G.frames.length,
-      frameSize: { w: G.frameW, h: G.frameH },
-      sheetSize: { w: lay.sheetW, h: lay.sheetH },
-    },
-  }, "m4ster-gifsheet.json");
-}
-
-/* ---------------- GIF Sheet wiring ---------------- */
-
-let gfStaticWired = false;
-
-function gfWireStage() {
-  const box = $("#gfStageBox");
-  if (box) {
-    ["dragenter", "dragover"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.add("gf-over");
-    }));
-    ["dragleave", "drop"].forEach(ev => box.addEventListener(ev, (e) => {
-      e.preventDefault();
-      box.classList.remove("gf-over");
-    }));
-    box.addEventListener("drop", (e) => {
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) gfLoadFile(f);
-    });
-  }
-  // paste a GIF while the GIF Sheet lane is open
-  document.addEventListener("paste", (e) => {
-    if (state.category !== "gif") return;
-    const items = (e.clipboardData && e.clipboardData.items) || [];
-    for (const it of items) {
-      if (it.type && it.type.indexOf("image/") === 0) {
-        const f = it.getAsFile();
-        if (f) { gfLoadFile(f); e.preventDefault(); break; }
-      }
-    }
-  });
-}
-
-function wireGif() {
-  const G = gfState();
-  $("#gfSample").onclick = gfLoadSample;
-  $("#gfPick").onclick = () => $("#gfFile").click();
-  $("#gfFile").onchange = (e) => {
-    gfLoadFile(e.target.files[0]);
-    e.target.value = "";
-  };
-  const auto = $("#gfAuto");
-  if (auto) auto.onchange = () => {
-    G.autoCols = auto.checked;
-    const c = $("#gfCols");
-    if (c) c.disabled = G.autoCols;
-    gfDraw();
-  };
-  const cols = $("#gfCols");
-  if (cols) cols.onchange = () => {
-    G.cols = Math.max(1, Math.min(64, +cols.value || 1));
-    cols.value = G.cols;
-    gfDraw();
-  };
-  $("#gfExport").onclick = gfExportPNG;
-  $("#gfJson").onclick = gfExportJSON;
-  $("#gfExport").disabled = $("#gfJson").disabled = !gfState().frames.length;
-  if (!gfStaticWired) {
-    gfStaticWired = true;
-    gfWireStage();
-  }
-  if (G.frames.length) gfDraw();
-  syncGifMode();
-}
-
 /* ================= wiring ================= */
 
 function init() {
@@ -9031,14 +4206,6 @@ function init() {
   wireExport();
   syncPixelMode();
   syncSlicerMode();
-  syncDraglabMode();
-  syncCutoutMode();
-  syncUpscaleMode();
-  syncAtlasMode();
-  syncNormalmapMode();
-  syncTilerMode();
-  syncPaletteMode();
-  syncGifMode();
 
   const toolBackBtn = document.getElementById("toolBack");
   if (toolBackBtn) toolBackBtn.onclick = () => {
@@ -9056,14 +4223,6 @@ function init() {
       renderParams();
       syncPixelMode();
       syncSlicerMode();
-      syncDraglabMode();
-      syncCutoutMode();
-      syncUpscaleMode();
-      syncAtlasMode();
-      syncNormalmapMode();
-      syncTilerMode();
-      syncPaletteMode();
-      syncGifMode();
       syncAiModelUI();
     };
   });
@@ -9141,7 +4300,7 @@ function init() {
   $("#generate").onclick = startFresh;
   $("#generateMobile").onclick = startFresh;
   $("#retryBtn").onclick = () => { state.strict = true; hideRetry(); runPipeline(); };
-  $("#procBtnRetry").onclick = () => {
+  $("#procBtn").onclick = () => {
     // one-click escape hatch: drop to the offline generator and re-run
     state.source = "procedural";
     document.querySelectorAll("#sourceSeg .seg-btn").forEach(x => x.classList.toggle("active", x.dataset.src === "procedural"));
@@ -9259,27 +4418,6 @@ document.addEventListener("DOMContentLoaded", init);
     applyRGB();
   }
 
-  /* ---------- v8.12: Frost transparency (one knob, whole glass system) ----------
-   * --frost is the panel-mix percentage behind every glass token, so
-   * setting it on <html> re-tints all glass surfaces live. The head
-   * script applies the saved value pre-paint; this keeps the slider
-   * in sync and persists on change, like the sibling prefs. */
-  var LS_FROST = "m4ster.frost";
-  function readFrost() {
-    var v = parseFloat(lsGet(LS_FROST));
-    return isFinite(v) ? Math.min(92, Math.max(45, v)) : 74;
-  }
-  function applyFrost() {
-    var v = readFrost();
-    document.documentElement.style.setProperty("--frost", String(v));
-    var rg = document.getElementById("frostRange");
-    if (rg) rg.value = String(v);
-  }
-  function saveFrost(v) {
-    lsSet(LS_FROST, String(Math.min(92, Math.max(45, v))));
-    applyFrost();
-  }
-
   function initCustomize() {
     var btn = document.getElementById("customizeBtn");
     var pop = document.getElementById("customizePop");
@@ -9316,31 +4454,11 @@ document.addEventListener("DOMContentLoaded", init);
       if (open && e.key === "Escape") setOpen(false);
     });
 
-    /* master Animations switch: flips the .anim-off class the head
-     * script set from this same key, persists "1" = on / "0" = off, and
-     * starts/stops the showcase loop to match (the trail + aura loops
-     * read the class live). aria-checked drives the switch visual,
-     * exactly like the sibling switches. */
-    var animBtn = document.getElementById("animToggle");
-    var applyAnim = function () {
-      if (animBtn) animBtn.setAttribute("aria-checked", animationsOn() ? "true" : "false");
-    };
-    if (animBtn) animBtn.addEventListener("click", function () {
-      var off = document.documentElement.classList.toggle("anim-off");
-      lsSet("m4ster.animations", off ? "0" : "1");
-      applyAnim();
-      if (off) showcaseStop(); else showcaseStart();
-    });
-    applyAnim();
-
     document.getElementById("auraToggle").addEventListener("click", function () {
       saveAura({ enabled: !readAura().enabled });
     });
     document.getElementById("auraIntensity").addEventListener("input", function (e) {
       saveAura({ intensity: +e.target.value });
-    });
-    document.getElementById("frostRange").addEventListener("input", function (e) {
-      saveFrost(+e.target.value);
     });
     document.getElementById("rgbToggle").addEventListener("click", function () {
       saveRGB({ enabled: !readRGB().enabled });
@@ -9359,8 +4477,6 @@ document.addEventListener("DOMContentLoaded", init);
        * snapshot (theme + aura + rgb) and confirms visually */
       try {
         lsSet(LS_THEME, document.documentElement.getAttribute("data-theme") || "forest");
-        lsSet("m4ster.animations", animationsOn() ? "1" : "0");
-        lsSet(LS_FROST, String(readFrost()));
         saveAura(readAura());
         saveRGB(readRGB());
       } catch (e) {}
@@ -9374,7 +4490,6 @@ document.addEventListener("DOMContentLoaded", init);
     applyTheme(lsGet(LS_THEME) || "forest", false);
     applyAura();
     applyRGB();
-    applyFrost();
   }
 
   if (document.readyState === "loading") {
@@ -9430,7 +4545,6 @@ function downloadBytes(u8, filename, mime) {
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800);
-  toastExport(filename, u8.byteLength);
 }
 
 function lzwEncode(indices, minCodeSize) {
@@ -9582,16 +4696,8 @@ const showcaseAnims = [];
 let showcaseRAF = 0;
 const reduceMotion = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
-/* master Animations switch (Customize): the head script puts .anim-off on
- * <html> unless localStorage "m4ster.animations" === "1", so animations
- * are OFF by default and this returns false. Decorative loops (cursor
- * trail, showcase, aura parallax) check it; content playback never does. */
-function animationsOn() {
-  return !document.documentElement.classList.contains("anim-off");
-}
-
 function drawShowcaseFrame(a) {
-  const ctx = a.ctx || (a.ctx = a.cv.getContext("2d"));   // cached at add time below
+  const ctx = a.cv.getContext("2d");
   const f = a.frames[a.idx % a.frames.length];
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, a.cv.width, a.cv.height);
@@ -9600,61 +4706,25 @@ function drawShowcaseFrame(a) {
   ctx.drawImage(f, Math.floor((a.cv.width - dw) / 2), Math.floor((a.cv.height - dh) / 2), dw, dh);
 }
 
-/* perf: one IntersectionObserver watches every showcase canvas (they live
- * in separate sections — gallery + presets — so per-canvas is the honest
- * gate); the shared loop idles to a stop while none of them is on screen
- * and restarts the moment one scrolls back into view. */
-let showcaseIO = null;
-function showcaseWatch(a) {
-  if (!("IntersectionObserver" in window)) { a.visible = true; return; }
-  if (!showcaseIO) {
-    showcaseIO = new IntersectionObserver((entries) => {
-      let any = false;
-      for (const e of entries) {
-        const anim = showcaseAnims.find((x) => x.cv === e.target);
-        if (anim) anim.visible = e.isIntersecting;
-        if (e.isIntersecting) any = true;
-      }
-      if (any) showcaseStart();
-    });
-  }
-  showcaseIO.observe(a.cv);
-}
-
 function showcaseAdd(cv, frames, fps) {
-  const a = { cv, ctx: cv.getContext("2d"), frames, fps: fps || 8, idx: 0, last: 0, visible: true };
+  const a = { cv, frames, fps: fps || 8, idx: 0, last: 0 };
   drawShowcaseFrame(a);
   showcaseAnims.push(a);
-  showcaseWatch(a);
-  showcaseStart();   // no-op while animations are off / reduced-motion / already running
 }
 
 function showcaseLoop(now) {
-  let anyVisible = false;
-  try {
-    for (const a of showcaseAnims) {
-      if (a.visible === false) continue;
-      anyVisible = true;
-      if (now - a.last < 1000 / a.fps) continue;
-      a.last = now;
-      a.idx = (a.idx + 1) % a.frames.length;
-      drawShowcaseFrame(a);
-    }
-  } finally {
-    /* nothing on screen: park the loop instead of redrawing blind — the
-     * observer restarts it via showcaseStart when a canvas reappears */
-    showcaseRAF = anyVisible ? requestAnimationFrame(showcaseLoop) : 0;
+  showcaseRAF = requestAnimationFrame(showcaseLoop);
+  for (const a of showcaseAnims) {
+    if (now - a.last < 1000 / a.fps) continue;
+    a.last = now;
+    a.idx = (a.idx + 1) % a.frames.length;
+    drawShowcaseFrame(a);
   }
 }
 
 function showcaseStart() {
-  if (reduceMotion() || showcaseRAF || !animationsOn()) return;
+  if (reduceMotion() || showcaseRAF) return;
   showcaseRAF = requestAnimationFrame(showcaseLoop);
-}
-
-function showcaseStop() {
-  if (showcaseRAF) cancelAnimationFrame(showcaseRAF);
-  showcaseRAF = 0;
 }
 
 document.addEventListener("visibilitychange", () => {
@@ -9850,14 +4920,6 @@ function initV6() {
       renderParams();
       syncPixelMode();
       syncSlicerMode();
-      syncDraglabMode();
-      syncCutoutMode();
-      syncUpscaleMode();
-      syncAtlasMode();
-      syncNormalmapMode();
-      syncTilerMode();
-      syncPaletteMode();
-      syncGifMode();
       syncAiModelUI();
       document.getElementById("tool").scrollIntoView({ behavior: "smooth", block: "start" });
     };
@@ -9894,7 +4956,7 @@ function initV6() {
         try {
           const gif = encodeGIF(frames, fps);
           downloadBytes(gif, state.atlas.pngName.replace(/\.png$/, "") + "-preview.gif", "image/gif");
-        } catch (e) { stageMsg("GIF encode failed: " + humanErr(e), true); }
+        } catch (e) { stageMsg("GIF encode failed: " + e.message, true); }
       }, 400); // t+400: animated GIF
     }
     setTimeout(() => downloadJSON(state.atlas.manifest, state.atlas.jsonName), 800); // t+800: manifest JSON
@@ -9937,7 +4999,7 @@ function initEntrances(doc) {
   const aura = $("#aura");
   let ticking = false;
   window.addEventListener("scroll", () => {
-    if (ticking || reduceMotion() || !animationsOn() || !aura) return;
+    if (ticking || reduceMotion() || !aura) return;
     ticking = true;
     requestAnimationFrame(() => {
       aura.style.transform = `translate3d(0, ${Math.round(window.scrollY * 0.06)}px, 0)`;
@@ -9987,33 +5049,12 @@ if (document.readyState === "loading") {
   sizeTrail();
   window.addEventListener("resize", sizeTrail);
   var themeGlow = "34,197,94"; /* forest green default; synced from --violet below */
-  /* perf: the trail glow is pre-rendered ONCE into a sprite at the max
-   * radius (90px) instead of building a fresh radial gradient per spot
-   * per frame. The sprite's stops are exactly the ones the per-spot
-   * gradient used at k = 1 — stop 0 "rgba(glow,0.280)", stop 1
-   * "rgba(glow,0)" — and each spot's fade is applied with globalAlpha = k
-   * while the sprite is drawn scaled to the spot's radius, which is the
-   * same falloff the old gradient produced. Repainted on theme change. */
-  var TR_MAX_R = 90;
-  var trailSprite = document.createElement("canvas");
-  trailSprite.width = trailSprite.height = TR_MAX_R * 2;
-  var trailSpriteCtx = trailSprite.getContext("2d");
-  function paintTrailSprite() {
-    if (!trailSpriteCtx) return;
-    trailSpriteCtx.clearRect(0, 0, TR_MAX_R * 2, TR_MAX_R * 2);
-    var g = trailSpriteCtx.createRadialGradient(TR_MAX_R, TR_MAX_R, 0, TR_MAX_R, TR_MAX_R, TR_MAX_R);
-    g.addColorStop(0, "rgba(" + themeGlow + "," + (0.28 * 1).toFixed(3) + ")");
-    g.addColorStop(1, "rgba(" + themeGlow + ",0)");
-    trailSpriteCtx.fillStyle = g;
-    trailSpriteCtx.fillRect(0, 0, TR_MAX_R * 2, TR_MAX_R * 2);
-  }
   function syncThemeGlow(){
     try{
       var v = getComputedStyle(document.documentElement).getPropertyValue("--violet").trim();
       var m = v.match(/^#([0-9a-f]{6})$/i);
       if(m){ var n = parseInt(m[1], 16); themeGlow = ((n>>16)&255) + "," + ((n>>8)&255) + "," + (n&255); }
     }catch(e){}
-    paintTrailSprite();
   }
   syncThemeGlow();
   try{ new MutationObserver(syncThemeGlow).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme"]}); }catch(e){}
@@ -10023,10 +5064,12 @@ if (document.readyState === "loading") {
       var s = spots[i], age = now - s.born;
       if (age > TR_LIFE) { spots.splice(i, 1); continue; }
       var k = 1 - age / TR_LIFE, r = 90 * (0.5 + 0.5 * k);
-      tctx.globalAlpha = k;
-      tctx.drawImage(trailSprite, s.x - r, s.y - r, r * 2, r * 2);
+      var g = tctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r);
+      g.addColorStop(0, "rgba(" + themeGlow + "," + (0.28 * k).toFixed(3) + ")");
+      g.addColorStop(1, "rgba(" + themeGlow + ",0)");
+      tctx.fillStyle = g;
+      tctx.beginPath(); tctx.arc(s.x, s.y, r, 0, 6.2832); tctx.fill();
     }
-    tctx.globalAlpha = 1;
   }
 
   var tx = -100, ty = -100, x = -100, y = -100; /* target / lerped orb pos */
@@ -10066,12 +5109,11 @@ if (document.readyState === "loading") {
       document.documentElement.classList.add("has-orb");
     }
     var now = performance.now();
-    if (animationsOn() && now - trLast >= TR_GAP) {   // no trail spots while animations are off
+    if (now - trLast >= TR_GAP) {
       trLast = now;
       spots.push({ x: e.clientX, y: e.clientY, born: now });
       if (spots.length > TR_MAX) spots.splice(0, spots.length - TR_MAX);
     }
-    pokeTick();   // wake the orb loop if it parked itself while idle
   }, { passive: true });
   document.addEventListener("mouseout", function (e) {
     if (!e.relatedTarget) orb.style.opacity = "0";
@@ -10097,71 +5139,45 @@ if (document.readyState === "loading") {
 
   var auraEl = document.getElementById("aura");
   var lastT = "", lastA = "";
-  /* perf: the loop parks itself once nothing it drives can change any
-   * more — orb settled on the pointer, aura parallax converged, no live
-   * trail spots. A parked frame would have written nothing anyway (the
-   * old loop only re-cleared an already-clear trail canvas), so parking
-   * is invisible; the next pointermove (or a return to the tab) re-arms
-   * it via pokeTick. */
-  var tickLive = false;
-  function pokeTick() {
-    if (tickLive) return;
-    tickLive = true;
-    requestAnimationFrame(runTick);
-  }
-  document.addEventListener("visibilitychange", function () {
-    if (!document.hidden) pokeTick();
-  });
-  function runTick() {
-    var again = false;
-    try { again = tickFrame(); }
-    catch (e) { again = true; /* a trail failure must never freeze the orb */ }
-    if (again) requestAnimationFrame(runTick);
-    else tickLive = false;
-  }
-  function tickFrame() {
-    if (document.hidden) return true;   // hidden tab: stay armed, do no work
+  (function tick() {
+    try {
     /* tight follow (was 0.22 — felt floaty) + snap when converged, so the
      * loop writes nothing once the orb settles instead of micro-lerping */
     var dx = tx - x, dy = ty - y;
     if (dx * dx + dy * dy < 0.01) { x = tx; y = ty; }
     else { x += dx * 0.45; y += dy * 0.45; }
     var k = x.toFixed(1) + "," + y.toFixed(1);
-    var orbMoved = k !== lastT;
-    if (orbMoved) {
+    if (k !== lastT) {
       orb.style.transform = "translate3d(" + x.toFixed(1) + "px," + y.toFixed(1) + "px,0)";
       lastT = k;
     }
     /* aura parallax: direct composited transform on the aura layer, written
      * only when it changed — the old :root var write forced a full style
-     * recalc every frame, which was the jank. Frozen while animations are
-     * off (the site rests still); the lerp resumes untouched when back on. */
-    var anim = animationsOn();
-    var auraMoved = false;
-    if (anim) {
-      var nx = (tx / window.innerWidth - 0.5) * 2;
-      var ny = (ty / window.innerHeight - 0.5) * 2;
-      ax += (nx - ax) * 0.08; ay += (ny - ay) * 0.08;
-      var ak = (ax * 1.5).toFixed(2) + "," + (ay * 1.5).toFixed(2);
-      auraMoved = ak !== lastA;
-      if (auraMoved && auraEl) {
-        auraEl.style.transform = "translate3d(" + (ax * 1.5).toFixed(2) + "vmax," + (ay * 1.5).toFixed(2) + "vmax,0)";
-        lastA = ak;
-      }
+     * recalc every frame, which was the jank */
+    var nx = (tx / window.innerWidth - 0.5) * 2;
+    var ny = (ty / window.innerHeight - 0.5) * 2;
+    ax += (nx - ax) * 0.08; ay += (ny - ay) * 0.08;
+    var ak = (ax * 1.5).toFixed(2) + "," + (ay * 1.5).toFixed(2);
+    if (ak !== lastA && auraEl) {
+      auraEl.style.transform = "translate3d(" + (ax * 1.5).toFixed(2) + "vmax," + (ay * 1.5).toFixed(2) + "vmax,0)";
+      lastA = ak;
     }
     /* cursor glow trail (5IN1 GridGlow): fading spots, drawn only while moving */
-    if (!anim && spots.length) spots.length = 0;   // toggled off mid-trail: spots die at once
     if (tctx && spots.length) drawTrail(performance.now());
     else if (tctx && trail.width) tctx.clearRect(0, 0, trail.width, trail.height);
-    return orbMoved || auraMoved || spots.length > 0;
-  }
-  pokeTick();
+    } finally { requestAnimationFrame(tick); /* a trail failure must never freeze the orb */ }
+  })();
 })();
 
-/* v6.9: PWA — Install App button (Download section only). The service
- * worker itself is registered once by the guarded block in index.html
- * (updateViaCache "none" + one-time reload on controller change). */
+/* v6.9: PWA — register SW, Install App button (Download section only).
+ * Button shows on beforeinstallprompt, hides after install or 6s timeout,
+ * and never shows when already running as installed PWA (standalone). */
 (function () {
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
   var btn = document.getElementById("installApp");
   if (!btn) return;
   var isStandalone = window.matchMedia("(display-mode: standalone)").matches ||
@@ -10302,14 +5318,6 @@ function wireFlip() {
   if (saved === "3d") applyDim("3d");
 }
 
-/* v8.12: the pick pop arms only after the first real interaction —
- * several controls are default-active, and nothing may pop on load */
-(function () {
-  var arm = function () { document.body.classList.add("glass-live"); };
-  window.addEventListener("pointerdown", arm, { once: true });
-  window.addEventListener("keydown", arm, { once: true });
-})();
-
 /* ============ 3D LAB — image → mesh on free HF Spaces (test build) ========
  * The providers were proven end-to-end in the provider lab
  * (~/workspace/framelab-provider-lab/results-3d-round1.json + round2):
@@ -10386,72 +5394,9 @@ function m3FileData(prov, path, file) {
     is_stream: false
   };
 }
-/* Upload prep: phone photos arrive at 3–5 MB and every provider in the
- * chain re-uploads the file from scratch, so one big photo costs that
- * upload up to five times. Anything over the gate is redrawn once, here,
- * at at most 1024px on the long edge — plenty for image-to-3D — and the
- * whole chain then shares the small copy. Pure decision helpers first,
- * so the gate math is testable without a DOM. */
-const M3_UPLOAD_MAX_BYTES = 900 * 1024;
-const M3_UPLOAD_MAX_EDGE = 1024;
-function m3ShrinkDecision(size, width, height) {
-  return size > M3_UPLOAD_MAX_BYTES || width > M3_UPLOAD_MAX_EDGE || height > M3_UPLOAD_MAX_EDGE;
-}
-function m3ShrinkTarget(width, height) {
-  const scale = Math.min(1, M3_UPLOAD_MAX_EDGE / Math.max(width, height));
-  return { w: Math.max(1, Math.round(width * scale)), h: Math.max(1, Math.round(height * scale)) };
-}
-async function m3PrepareImage(file) {
-  try {
-    if (!file || !/^image\//.test(file.type || "")) return file;
-    let src = null, srcUrl = null, w = 0, h = 0;
-    if (typeof createImageBitmap === "function") {
-      try { src = await createImageBitmap(file); w = src.width; h = src.height; }
-      catch (e) { src = null; }
-    }
-    if (!src) {
-      srcUrl = URL.createObjectURL(file);
-      src = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error("could not read that image"));
-        img.src = srcUrl;
-      });
-      w = src.naturalWidth; h = src.naturalHeight;
-    }
-    const cleanup = () => {
-      if (srcUrl) URL.revokeObjectURL(srcUrl);
-      if (src && src.close) src.close();
-    };
-    if (!w || !h || !m3ShrinkDecision(file.size, w, h)) { cleanup(); return file; }
-    const t = m3ShrinkTarget(w, h);
-    const cv = document.createElement("canvas");
-    cv.width = t.w; cv.height = t.h;
-    const ctx = cv.getContext("2d", { willReadFrequently: true });
-    ctx.drawImage(src, 0, 0, t.w, t.h);
-    cleanup();
-    /* a transparent source must stay PNG; a flat photo goes out as JPEG,
-     * which is far smaller for the same pixels */
-    let hasAlpha = false;
-    try {
-      const px = ctx.getImageData(0, 0, t.w, t.h).data;
-      for (let i = 3; i < px.length; i += 4) { if (px[i] < 250) { hasAlpha = true; break; } }
-    } catch (e) { hasAlpha = true; }
-    const type = hasAlpha ? "image/png" : "image/jpeg";
-    const blob = await new Promise((res) => cv.toBlob(res, type, type === "image/jpeg" ? 0.87 : undefined));
-    if (!blob) return file;
-    const base = (file.name || "image").replace(/\.[a-z0-9]+$/i, "");
-    return new File([blob], base + (type === "image/png" ? ".png" : ".jpg"), { type: type });
-  } catch (e) {
-    return file; /* any surprise anywhere: the original goes up untouched */
-  }
-}
 /* join the Gradio queue, then read the SSE stream until process_completed.
- * Resolves with the call's output data array; throws loud on any failure.
- * Optional onEvent({position, eta}) fires on queue "estimation" events —
- * position is 1-based (rank + 1), eta is seconds; either may be null when
- * the provider does not send it. */
-async function m3Call(prov, session, fnIndex, data, deadline, onEvent) {
+ * Resolves with the call's output data array; throws loud on any failure. */
+async function m3Call(prov, session, fnIndex, data, deadline) {
   const join = await m3Fetch(prov.host + prov.base + "/queue/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -10487,15 +5432,6 @@ async function m3Call(prov, session, fnIndex, data, deadline, onEvent) {
         if (evt.msg === "process_error") {
           throw new Error(String(evt.error || "the provider reported an error"));
         }
-        if (evt.msg === "estimation" && onEvent) {
-          const pos = typeof evt.queue_position === "number" ? evt.queue_position
-            : typeof evt.rank === "number" ? evt.rank + 1 : null;
-          const eta = typeof evt.rank_eta === "number" ? evt.rank_eta
-            : typeof evt.eta === "number" ? evt.eta : null;
-          if (pos !== null || eta !== null) {
-            try { onEvent({ position: pos, eta: eta }); } catch (e) { /* a status callback must never break the run */ }
-          }
-        }
       }
     }
     throw new Error("the queue stream ended before the mesh finished");
@@ -10503,30 +5439,6 @@ async function m3Call(prov, session, fnIndex, data, deadline, onEvent) {
     if (e && e.name === "AbortError") throw m3TimeoutErr();
     throw e;
   } finally { clearTimeout(timer); }
-}
-/* queue-position reporter for m3Call's onEvent: speaks at most once per
- * 5 seconds, and only when the position actually changed. Providers that
- * never send estimation events simply never trigger it. */
-function m3QueueSay(say, name) {
-  let lastAt = 0, lastPos = null, firstAt = null;
-  return function (q) {
-    if (!q || q.position === null || q.position === undefined) return;
-    if (firstAt === null) firstAt = Date.now();
-    if (q.position === lastPos) return;
-    const now = Date.now();
-    if (now - lastAt < 5000) return;
-    lastAt = now;
-    lastPos = q.position;
-    let t = name + " — in the free queue — #" + q.position + " in line";
-    if (q.eta !== null && q.eta !== undefined && isFinite(q.eta) && q.eta > 0) {
-      t += ", roughly ~" + Math.max(1, Math.round(q.eta)) + "s";
-    }
-    /* elapsed-time honesty (v8.13): after 20s of real queue time the
-     * line says the wait is long — a fact about the clock, never a
-     * fabricated percentage */
-    if (now - firstAt >= 20000) t += " — still queued; the free line is slow right now";
-    say(t + "…");
-  };
 }
 async function m3FetchBlob(url, deadline) {
   const res = await m3Fetch(url, {}, deadline);
@@ -10539,19 +5451,18 @@ async function m3FetchBlob(url, deadline) {
 async function m3RunSF3D(file, say) {
   const prov = M3_PROVIDERS.sf3d, session = m3Session();
   const deadline = Date.now() + M3_TIMEOUT_MS;
-  const onQ = m3QueueSay(say, prov.name);
   say("Stable Fast 3D — uploading your image…");
   const fd = m3FileData(prov, await m3Upload(prov, file, deadline), file);
   say("Stable Fast 3D — checking the background…");
-  const step1 = await m3Call(prov, session, 4, [fd, 0.85], deadline, onQ);
+  const step1 = await m3Call(prov, session, 4, [fd, 0.85], deadline);
   const btn = step1 && step1[0];
   const btnVal = btn && typeof btn === "object" ? btn.value : btn;
   if (btnVal === "Remove Background") {
     say("Stable Fast 3D — removing the background…");
-    await m3Call(prov, session, 5, ["Remove Background", fd, null, 0.85, "None", -1, 1024], deadline, onQ);
+    await m3Call(prov, session, 5, ["Remove Background", fd, null, 0.85, "None", -1, 1024], deadline);
   }
   say("Stable Fast 3D — building your mesh (usually ~10 seconds)…");
-  const step3 = await m3Call(prov, session, 5, ["Run", fd, null, 0.85, "None", -1, 1024], deadline, onQ);
+  const step3 = await m3Call(prov, session, 5, ["Run", fd, null, 0.85, "None", -1, 1024], deadline);
   const upd = step3 && step3[4];
   const glbFd = upd && typeof upd === "object" && "value" in upd ? upd.value : upd;
   const url = m3FileUrl(prov, glbFd);
@@ -10566,19 +5477,18 @@ async function m3RunSF3D(file, say) {
 async function m3RunInstantMesh(file, say) {
   const prov = M3_PROVIDERS.instantmesh, session = m3Session();
   const deadline = Date.now() + M3_TIMEOUT_MS;
-  const onQ = m3QueueSay(say, prov.name);
   say("InstantMesh — uploading your image…");
   const fd = m3FileData(prov, await m3Upload(prov, file, deadline), file);
   say("InstantMesh — preparing the image…");
-  const pre = await m3Call(prov, session, 2, [fd, true], deadline, onQ);
+  const pre = await m3Call(prov, session, 2, [fd, true], deadline);
   const processed = pre && pre[0];
   if (!processed) throw new Error("InstantMesh preprocessing returned no image");
   say("InstantMesh — dreaming up six views of your subject…");
-  const mvs = await m3Call(prov, session, 3, [processed, 75, 42], deadline, onQ);
+  const mvs = await m3Call(prov, session, 3, [processed, 75, 42], deadline);
   const showImg = mvs && mvs[1];
   if (!showImg) throw new Error("InstantMesh returned no multiview image");
   say("InstantMesh — building your mesh…");
-  const made = await m3Call(prov, session, 4, [showImg], deadline, onQ);
+  const made = await m3Call(prov, session, 4, [showImg], deadline);
   const objFd = made && made[0], glbFd = made && made[1];
   const glbUrl = m3FileUrl(prov, glbFd);
   if (!glbUrl) throw new Error("InstantMesh finished but returned no mesh file");
@@ -10598,19 +5508,18 @@ async function m3RunInstantMesh(file, say) {
 async function m3RunTrellis2(file, say) {
   const prov = M3_PROVIDERS.trellis2, session = m3Session();
   const deadline = Date.now() + M3_TIMEOUT_MS;
-  const onQ = m3QueueSay(say, prov.name);
   say("TRELLIS.2 — starting a session on the free GPU…");
-  await m3Call(prov, session, 2, [], deadline, onQ);
+  await m3Call(prov, session, 2, [], deadline);
   say("TRELLIS.2 — uploading your image…");
   const fd = m3FileData(prov, await m3Upload(prov, file, deadline), file);
   say("TRELLIS.2 — removing the background…");
-  const pre = await m3Call(prov, session, 4, [fd], deadline, onQ);
+  const pre = await m3Call(prov, session, 4, [fd], deadline);
   const processed = pre && pre[0];
   if (!processed) throw new Error("TRELLIS.2 preprocessing returned no image");
   say("TRELLIS.2 — building your textured mesh (usually ~1 minute)…");
-  await m3Call(prov, session, 7, [processed, 0, "1024", 7.5, 0.7, 12, 5.0, 7.5, 0.5, 12, 3.0, 1.0, 0.0, 12, 3.0], deadline, onQ);
+  await m3Call(prov, session, 7, [processed, 0, "1024", 7.5, 0.7, 12, 5.0, 7.5, 0.5, 12, 3.0, 1.0, 0.0, 12, 3.0], deadline);
   say("TRELLIS.2 — packing the GLB…");
-  const made = await m3Call(prov, session, 9, [null, 300000, (typeof window !== "undefined" && window.M3_TEXSIZE) || 2048], deadline, onQ);
+  const made = await m3Call(prov, session, 9, [null, 300000, (typeof window !== "undefined" && window.M3_TEXSIZE) || 2048], deadline);
   const rawFd = made && made[0];
   const glbFd = rawFd && typeof rawFd === "object" && "value" in rawFd ? rawFd.value : rawFd;
   const url = m3FileUrl(prov, glbFd);
@@ -10635,17 +5544,16 @@ async function m3RunTrellis2(file, say) {
 async function m3RunTrellis(file, say) {
   const prov = M3_PROVIDERS.trellis, session = m3Session();
   const deadline = Date.now() + M3_TIMEOUT_MS;
-  const onQ = m3QueueSay(say, prov.name);
   say("TRELLIS (community) — starting a session on the free GPU…");
-  await m3Call(prov, session, 4, [], deadline, onQ);
+  await m3Call(prov, session, 4, [], deadline);
   say("TRELLIS (community) — uploading your image…");
   const fd = m3FileData(prov, await m3Upload(prov, file, deadline), file);
   say("TRELLIS (community) — removing the background…");
-  const pre = await m3Call(prov, session, 8, [fd], deadline, onQ);
+  const pre = await m3Call(prov, session, 8, [fd], deadline);
   const processed = pre && pre[0];
   if (!processed) throw new Error("TRELLIS (community) preprocessing returned no image");
   say("TRELLIS (community) — building your mesh (usually ~1 minute)…");
-  const made = await m3Call(prov, session, 11, [processed, [], null, 0, 7.5, 12, 3.0, 12, "stochastic", 0.95, 1024], deadline, onQ);
+  const made = await m3Call(prov, session, 11, [processed, [], null, 0, 7.5, 12, 3.0, 12, "stochastic", 0.95, 1024], deadline);
   const unwrap = (v) => v && typeof v === "object" && "value" in v ? v.value : v;
   const glbFd = unwrap(made && made[2]) || unwrap(made && made[3]);
   const url = m3FileUrl(prov, glbFd);
@@ -10670,7 +5578,6 @@ async function m3RunTrellis(file, say) {
 async function m3RunHunyuanMini(file, say) {
   const prov = M3_PROVIDERS["hunyuan-mini"], session = m3Session();
   const deadline = Date.now() + M3_TIMEOUT_MS;
-  const onQ = m3QueueSay(say, prov.name);
   say("Hunyuan3D-2 Mini Turbo — uploading your image…");
   let upPath;
   try {
@@ -10683,29 +5590,7 @@ async function m3RunHunyuanMini(file, say) {
   }
   const fd = m3FileData(prov, upPath, file);
   say("Hunyuan3D-2 Mini Turbo — building your mesh (usually ~15 seconds)…");
-  const made = await m3Call(prov, session, 4, [null, fd, null, null, null, null, 5, 5.0, 1234, 256, true, 8000, true], deadline, onQ);
-  const rawFd = made && made[0];
-  const glbFd = rawFd && typeof rawFd === "object" && "value" in rawFd ? rawFd.value : rawFd;
-  const url = m3FileUrl(prov, glbFd);
-  if (!url) throw new Error("Hunyuan3D-2 Mini Turbo finished but returned no mesh file");
-  say("Hunyuan3D-2 Mini Turbo — downloading your mesh…");
-  return { glb: await m3FetchBlob(url, deadline), obj: null };
-}
-
-/* True text→mesh on the same Mini Turbo call: the prompt goes in slot 0
- * and every image slot stays null, so no image is drawn or uploaded at
- * all — the model builds the shape from the words alone. Same output
- * shape as image mode (GLB in output[0], same {value} unwrap), and the
- * same caveat: SHAPE ONLY, the mesh comes out untextured. (The full
- * Hunyuan3D-2 space was trialled for this on 2026-10-30 and cannot
- * serve it — its deployment answers "Text to 3D is disable", so the
- * mini space is the only direct route.) */
-async function m3RunHunyuanText(prompt, say) {
-  const prov = M3_PROVIDERS["hunyuan-mini"], session = m3Session();
-  const deadline = Date.now() + M3_TIMEOUT_MS;
-  const onQ = m3QueueSay(say, prov.name);
-  say("Hunyuan3D-2 Mini Turbo — building your mesh straight from your words (shape only, untextured)…");
-  const made = await m3Call(prov, session, 4, [prompt, null, null, null, null, null, 5, 5.0, 1234, 256, true, 8000, true], deadline, onQ);
+  const made = await m3Call(prov, session, 4, [null, fd, null, null, null, null, 5, 5.0, 1234, 256, true, 8000, true], deadline);
   const rawFd = made && made[0];
   const glbFd = rawFd && typeof rawFd === "object" && "value" in rawFd ? rawFd.value : rawFd;
   const url = m3FileUrl(prov, glbFd);
@@ -10736,7 +5621,10 @@ function wire3DLab() {
   let file = null, running = false, objUrls = [];
 
   const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(2) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
-  const shortErr = (e) => humanErr(e);
+  const shortErr = (e) => {
+    const m = e && e.message ? String(e.message) : String(e);
+    return m.length > 140 ? m.slice(0, 140) + "…" : m;
+  };
   /* ZeroGPU quota refusals ("quota" / "GPU duration" in the message) mean
    * the shared free GPU budget is busy right now — a switch signal in
    * AUTO, not a dead end. */
@@ -10744,7 +5632,6 @@ function wire3DLab() {
   function say(t, isErr) {
     status.textContent = t;
     status.classList.toggle("err", !!isErr);
-    pulseStatus(status);
   }
   window.M3_SET_SOURCE = function (f) { setFile(f); };
   function setFile(f) {
@@ -10874,7 +5761,7 @@ function wire3DLab() {
     const gizmoCam = new THREE.PerspectiveCamera(38, 1, 0.1, 20);
     m3three = { THREE, GLTFLoader, scene, camera, renderer, controls, key,
       clayMat: new THREE.MeshStandardMaterial({ color: 0xb9b9be, roughness: 0.85, metalness: 0.0 }),
-      wireMat: new THREE.MeshBasicMaterial({ color: new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue("--violet").trim() || "#a78bfa"), wireframe: true }),
+      wireMat: new THREE.MeshBasicMaterial({ color: 0xa6f750, wireframe: true }),
       normalMat: new THREE.MeshNormalMaterial(),
       metalMat: new THREE.MeshStandardMaterial({ color: 0xdfe3e8, metalness: 1.0, roughness: 0.32 }),
       greyMat: new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.15, roughness: 0.55 }),
@@ -10897,10 +5784,6 @@ function wire3DLab() {
       const step = Math.max(-1, Math.min(1, e.deltaY / 100));
       m3three.zoomGoal = Math.max(c.minDistance, Math.min(c.maxDistance, m3three.zoomGoal * (1 + step * 0.14)));
     }, { capture: true, passive: false });
-    /* perf: per-frame scratch vectors for the zoom easing + gizmo pass —
-     * the tick used to clone() two fresh Vector3s every frame */
-    const _m3ZoomOff = new THREE.Vector3();
-    const _m3GizmoDir = new THREE.Vector3();
     const tick = () => {
       m3three.raf = requestAnimationFrame(tick);
       if (!wrap.offsetParent) return; // stage hidden — idle cheap
@@ -10911,7 +5794,7 @@ function wire3DLab() {
         camera.updateProjectionMatrix();
       }
       if (m3three.zoomGoal) {
-        const off = _m3ZoomOff.copy(m3three.camera.position).sub(m3three.controls.target);
+        const off = m3three.camera.position.clone().sub(m3three.controls.target);
         const cur = off.length();
         const nd = cur + (m3three.zoomGoal - cur) * 0.18;
         if (Math.abs(m3three.zoomGoal - nd) < m3three.zoomGoal * 0.003) { off.setLength(m3three.zoomGoal); m3three.zoomGoal = 0; }
@@ -10923,7 +5806,7 @@ function wire3DLab() {
       renderer.render(scene, camera);
       if (m3three.model && w > 280 && h > 220) {
         const gs = 84;
-        const dir = _m3GizmoDir.copy(camera.position).sub(controls.target).normalize();
+        const dir = camera.position.clone().sub(controls.target).normalize();
         gizmoCam.position.copy(dir.multiplyScalar(3.1));
         gizmoCam.up.copy(camera.up);
         gizmoCam.lookAt(0, 0, 0);
@@ -11124,7 +6007,7 @@ function wire3DLab() {
       const inp = document.getElementById("m3ChainInput");
       if (inp) setTimeout(() => inp.focus({ preventScroll: true }), 60);
       const cs = document.getElementById("m3ChainStatus");
-      if (cs && !cs.textContent) cs.textContent = "One click: your words go straight to a text-to-3D model. Direct meshes are shape-only (untextured).";
+      if (cs && !cs.textContent) cs.textContent = "One click: the hub draws it, then builds the mesh itself.";
     }
   }
   if (tabText) tabText.addEventListener("click", () => m3SetMode(true));
@@ -11219,7 +6102,6 @@ function wire3DLab() {
     a.download = filename;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 6000);
-    toastExport(filename, blob.size);
   }
   function m3FilteredGroup(keepFn) {
     const s = m3three, THREE = s.THREE;
@@ -11283,7 +6165,6 @@ function wire3DLab() {
     a.download = filename;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 6000);
-    toastExport(filename, blob.size);
   }
   async function m3ExportOBJ(filename) {
     if (!m3three || !m3three.model) return false;
@@ -11572,10 +6453,6 @@ function wire3DLab() {
       list.appendChild(row);
     });
   }
-  const bridgeGuide = document.getElementById("m3BridgeGuide");
-  if (bridgeGuide) bridgeGuide.addEventListener("click", () => {
-    downloadBytes(new TextEncoder().encode(MESH_README), "framelab-mesh-import-guide.txt", "text/plain");
-  });
   window.M3_LOAD_GLB = function (url, name) {
     const flip = document.getElementById("flip3d");
     if (flip) flip.click();
@@ -11604,7 +6481,6 @@ function wire3DLab() {
       a.download = "framelab-view.png";
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      toastExport("framelab-view.png", blob.size);
     }, "image/png");
   });
   const rdTex = document.getElementById("m3RdTex");
@@ -11725,55 +6601,13 @@ function wire3DLab() {
     });
   });
 
-  async function runOne(id, f) {
-    const useFile = f || file;
-    if (id === "sf3d") return m3RunSF3D(useFile, say);
-    if (id === "trellis2") return m3RunTrellis2(useFile, say);
-    if (id === "trellis") return m3RunTrellis(useFile, say);
-    if (id === "hunyuan-mini") return m3RunHunyuanMini(useFile, say);
-    return m3RunInstantMesh(useFile, say);
+  async function runOne(id) {
+    if (id === "sf3d") return m3RunSF3D(file, say);
+    if (id === "trellis2") return m3RunTrellis2(file, say);
+    if (id === "trellis") return m3RunTrellis(file, say);
+    if (id === "hunyuan-mini") return m3RunHunyuanMini(file, say);
+    return m3RunInstantMesh(file, say);
   }
-
-  /* one presentation path for every finished mesh — download links,
-   * sizes, the result note, the viewer — whoever built the mesh */
-  function presentResult(out, usedName, usedId, secs) {
-    flSkel("m3Skel", false); /* the mesh is here — skeleton off */
-    const glbUrl = URL.createObjectURL(out.glb);
-    objUrls.push(glbUrl);
-    glbLink.href = glbUrl;
-    glbLink.dataset.size = out.glb.size;
-    if (out.obj) objLink.dataset.size = out.obj.size;
-    glbSize.textContent = "· " + fmtSize(out.glb.size);
-    if (out.obj) {
-      const objUrl = URL.createObjectURL(out.obj);
-      objUrls.push(objUrl);
-      objLink.href = objUrl;
-      objSize.textContent = "· " + fmtSize(out.obj.size);
-      objLink.hidden = false;
-    } else {
-      objLink.hidden = true;
-    }
-    resultNote.textContent = "Made by " + usedName + " in ~" + secs + "s, free. GLB drops straight into Unity / Unreal / Godot." +
-      (usedId === "hunyuan-mini"
-        ? " Note: Hunyuan3D-2 Mini Turbo is shape-only — this mesh is untextured (plain surface, no colors baked in), ready for your own materials."
-        : "");
-    result.hidden = false;
-    say("Done — your mesh is ready below. ⬇");
-    showGlbPreview(glbUrl);
-  }
-  /* the Text to 3D direct route lands here — same reset the Generate
-   * button does at run start, then the shared presentation */
-  window.M3_SHOW_RESULT = function (out, usedName, usedId, secs) {
-    result.hidden = true;
-    hideGlbPreview();
-    objUrls.forEach((u) => URL.revokeObjectURL(u));
-    objUrls = [];
-    presentResult(out, usedName, usedId, secs);
-  };
-
-  /* v8.13: the result download links confirm through the shared toast */
-  glbLink.addEventListener("click", () => toastExport(glbLink.download || "framelab-mesh.glb", Number(glbLink.dataset.size) || undefined));
-  objLink.addEventListener("click", () => toastExport(objLink.download || "framelab-mesh.obj", Number(objLink.dataset.size) || undefined));
 
   go.addEventListener("click", async () => {
     if (!file || running) return;
@@ -11784,23 +6618,12 @@ function wire3DLab() {
     hideGlbPreview();
     objUrls.forEach((u) => URL.revokeObjectURL(u));
     objUrls = [];
-    flSkel("m3Skel", true); /* block placeholder while the providers work */
-    const tryAutoBtn = document.getElementById("m3TryAuto");
-    if (tryAutoBtn) tryAutoBtn.hidden = true;
     const mode = provSel.value;
     /* the optional token is read once, here, at run start — every
      * request this run makes then carries it (see m3AuthHeaders) */
     M3_TOKEN = aiKeyFor("hf-flux");
     const t0 = Date.now();
     try {
-      /* shrink a big photo ONCE, before the chain starts: every provider
-       * — and every AUTO fallback after it — uploads this same copy */
-      const runFile = await m3PrepareImage(file);
-      if (runFile !== file) {
-        say("Big photo — shrunk a copy first so the upload is fast. Every model gets the smaller file.");
-        /* hold the note for a beat, like the chain announcements below */
-        await new Promise((r) => setTimeout(r, 900));
-      }
       let out, usedName, usedId;
       if (mode === "auto") {
         /* AUTO chain: fast SF3D → textured TRELLIS.2 → InstantMesh →
@@ -11812,7 +6635,7 @@ function wire3DLab() {
         const triedErrs = [];
         for (let i = 0; i < chain.length; i++) {
           try {
-            out = await runOne(chain[i], runFile);
+            out = await runOne(chain[i]);
             usedName = M3_PROVIDERS[chain[i]].name;
             usedId = chain[i];
             lastErr = null;
@@ -11835,12 +6658,31 @@ function wire3DLab() {
         }
         if (!out) { const er = lastErr || new Error("no provider ran"); er.triedErrs = triedErrs; throw er; }
       } else {
-        out = await runOne(mode, runFile);
+        out = await runOne(mode);
         usedName = M3_PROVIDERS[mode].name;
         usedId = mode;
       }
       const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
-      presentResult(out, usedName, usedId, secs);
+      const glbUrl = URL.createObjectURL(out.glb);
+      objUrls.push(glbUrl);
+      glbLink.href = glbUrl;
+      glbSize.textContent = "· " + fmtSize(out.glb.size);
+      if (out.obj) {
+        const objUrl = URL.createObjectURL(out.obj);
+        objUrls.push(objUrl);
+        objLink.href = objUrl;
+        objSize.textContent = "· " + fmtSize(out.obj.size);
+        objLink.hidden = false;
+      } else {
+        objLink.hidden = true;
+      }
+      resultNote.textContent = "Made by " + usedName + " in ~" + secs + "s, free. GLB drops straight into Unity / Unreal / Godot." +
+        (usedId === "hunyuan-mini"
+          ? " Note: Hunyuan3D-2 Mini Turbo is shape-only — this mesh is untextured (plain surface, no colors baked in), ready for your own materials."
+          : "");
+      result.hidden = false;
+      say("Done — your mesh is ready below. ⬇");
+      showGlbPreview(glbUrl);
     } catch (e) {
       let em = shortErr(e);
       if (!/[.!?]$/.test(em)) em += ".";
@@ -11850,25 +6692,11 @@ function wire3DLab() {
         say((mode === "auto" ? "All five free 3D providers failed: " : "That provider failed: ") +
           em + " No fake mesh, no charge — give the free GPUs a minute and try again.", true);
       }
-      /* v8.13: a single-provider failure earns its concrete fix —
-       * one click flips to AUTO and re-runs the same image */
-      if (mode !== "auto") {
-        const tb = document.getElementById("m3TryAuto");
-        if (tb) tb.hidden = false;
-      }
     } finally {
-      flSkel("m3Skel", false);
       running = false;
       go.disabled = !file;
       go.textContent = "✨ Generate";
     }
-  });
-  const tryAutoBtn2 = document.getElementById("m3TryAuto");
-  if (tryAutoBtn2) tryAutoBtn2.addEventListener("click", () => {
-    tryAutoBtn2.hidden = true;
-    provSel.value = "auto";
-    provSel.dispatchEvent(new Event("change", { bubbles: true }));
-    if (!go.disabled) go.click();
   });
 }
 
@@ -11900,15 +6728,7 @@ function wire3DLab() {
   });
   function wizardOn() {
     return !(document.body.classList.contains("mode-pixelart") ||
-             document.body.classList.contains("mode-slicer") ||
-             document.body.classList.contains("mode-draglab") ||
-             document.body.classList.contains("mode-cutout") ||
-             document.body.classList.contains("mode-upscale") ||
-             document.body.classList.contains("mode-atlas") ||
-             document.body.classList.contains("mode-normalmap") ||
-             document.body.classList.contains("mode-tiler") ||
-             document.body.classList.contains("mode-palette") ||
-             document.body.classList.contains("mode-gif"));
+             document.body.classList.contains("mode-slicer"));
   }
   function render() {
     var on = wizardOn();
@@ -12121,7 +6941,7 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       const ok = await window.M3_SPLIT(mode);
       el.textContent = ok ? "Split GLB downloaded." : "That split came out empty — try the other half.";
-    } catch (e) { el.textContent = "Split failed in the browser: " + humanErr(e); }
+    } catch (e) { el.textContent = "Split failed in the browser: " + (e && e.message ? e.message : e); }
   }
   $("ppSplitTop").addEventListener("click", () => doSplit("top", $("ppSplitStatus")));
   $("ppSplitBottom").addEventListener("click", () => doSplit("bottom", $("ppSplitStatus")));
@@ -12207,7 +7027,6 @@ document.addEventListener("DOMContentLoaded", function () {
     a.href = out.toDataURL("image/png");
     a.download = "framelab-palette.png";
     a.click();
-    toastExport("framelab-palette.png", flDataUrlBytes(a.href));
   });
   $("ppHexCopy").addEventListener("click", () => {
     if (navigator.clipboard) navigator.clipboard.writeText(lastHex.join(", "));
@@ -12233,7 +7052,7 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       const ok = await window.M3_EXPORT_WITH_BASE();
       stEl.textContent = ok ? "GLB with base downloaded." : "Add a base first, then export.";
-    } catch (e) { stEl.textContent = "Export failed: " + humanErr(e); }
+    } catch (e) { stEl.textContent = "Export failed: " + (e && e.message ? e.message : e); }
   });
   // edit
   function doEdit(action, msg) {
@@ -12268,14 +7087,10 @@ document.addEventListener("DOMContentLoaded", function () {
   function scrollTo(id) { const el = $(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }
 
   /* --- Text to 3D: fully independent, inside the studio ---
-   * First the direct route: the prompt goes straight to Hunyuan3D-2's
-   * text-to-3D call and the mesh lands in the studio viewer — no image
-   * is drawn at all, and the mesh is shape-only (untextured). Only if
-   * the direct route cannot answer does the classic route run: the
-   * studio draws the image itself through the same free AI API the 2D
-   * side uses, then builds the mesh from it. Either way the 2D wizard
-   * is never opened, flipped to, or borrowed, and its rows are never
-   * touched. Steps live in the panel: 1 Describe, 2 Build mesh. */
+   * The studio draws the image itself through the same free AI API the
+   * 2D side uses — the 2D wizard is never opened, flipped to, or
+   * borrowed, and its rows are never touched. Steps live in the panel:
+   * 1 Describe, 2 Draw, 3 Build mesh. */
   function t3dStep(n) {
     const box = $("m3TSteps");
     if (!box) return;
@@ -12291,41 +7106,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const text = (promptText || "").trim();
     if (!text) { t3dStatus("Describe the model first."); return; }
     window.M3_T3D_RUNNING = true;
-    flSkel("m3Skel", true); /* the direct route builds in the same stage */
     const btn = $("m3ChainBtn");
     if (btn) btn.disabled = true;
-    const t0 = Date.now();
     try {
       /* faces die on Smart: it routes AUTO to InstantMesh first. Text
        * prompts are characters and detailed objects — build them on
        * High Detail. The toggle is right there to switch to Smart. */
       if (window.M3_SMART_TOPO) { const hd = $("m3TopoDetail"); if (hd) hd.click(); }
       t3dStep(2);
-      /* same token rule as the Generate button: the saved HF token (if
-       * any) is read once at run start and rides the direct calls */
-      try { M3_TOKEN = (aiKeys().huggingface || "").trim(); } catch (e) {}
-      if (!window.M3_TEXT_DIRECT_OFF) {
-      try {
-        const direct = await m3RunHunyuanText(text, (t) => t3dStatus(t));
-        const secs = Math.max(1, Math.round((Date.now() - t0) / 1000));
-        if (window.M3_SHOW_RESULT) window.M3_SHOW_RESULT(direct, "Hunyuan3D-2 Mini Turbo", "hunyuan-mini", secs);
-        t3dStep(3);
-        t3dStatus("Done — built straight from your words by Hunyuan3D-2 Mini Turbo. Shape only: the mesh is untextured, ready for your own materials.");
-        return;
-      } catch (directErr) {
-        if (/Text to 3D is disable/i.test(directErr && directErr.message ? directErr.message : String(directErr))) {
-          /* the provider has text-to-3D switched off server-side — do not
-           * pay the queue wait again on later runs this session */
-          window.M3_TEXT_DIRECT_OFF = true;
-          t3dStatus("The direct text-to-mesh route is switched off at the provider right now — drawing an image from your words first, then building the mesh from it…");
-        } else {
-          t3dStatus("The direct text-to-mesh route could not answer (" + humanErr(directErr).slice(0, 120) + ") — falling back: drawing an image from your words first, then building the mesh from it…");
-        }
-        /* hold the note for a beat so it can be read before the
-         * fallback's own statuses take over the line */
-        await new Promise((r) => setTimeout(r, 1200));
-      }
-      }
       const shaped = text + ", full body, entire figure visible with empty margin around it, head large and clearly detailed, standing straight facing the camera, plain solid white background, studio product photography, sharp focus, no text";
       let bmp = null;
       try {
@@ -12347,9 +7135,8 @@ document.addEventListener("DOMContentLoaded", function () {
       setTimeout(() => { const go = $("m3Go"); if (go && !go.disabled) go.click(); }, 600);
     } catch (e) {
       t3dStep(1);
-      t3dStatus("Text to 3D stopped: " + humanErr(e));
+      t3dStatus("Text to 3D stopped: " + String((e && e.message) || e).slice(0, 220));
     } finally {
-      flSkel("m3Skel", false);
       window.M3_T3D_RUNNING = false;
       if (btn) btn.disabled = false;
     }
@@ -12363,7 +7150,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const inp = $("m3ChainInput");
     if (inp) inp.value = promptText;
     const sk = $("skStatus");
-    if (sk) sk.textContent = "Skill running in the 3D studio — words straight to a mesh, all automatic.";
+    if (sk) sk.textContent = "Skill running in the 3D studio — image first, mesh right after, all automatic.";
     scrollTo("lab3d");
     window.M3_TEXT_TO_3D(promptText);
   };
@@ -12380,7 +7167,6 @@ document.addEventListener("DOMContentLoaded", function () {
    * a source thumb / enabled Generate means step 1 is done; a loaded
    * model means all three are. */
   setInterval(() => {
-    if (document.hidden) return;
     const box = $("m3ISteps");
     if (!box) return;
     const go = $("m3Go");
@@ -13167,30 +7953,20 @@ document.addEventListener("DOMContentLoaded", function () {
   if(/(?:\?|&|#)edit(?:=1)?(?:&|$)/.test(location.href))setEditing(true);
 })();
 
-/* ---------- v8.13: offline state (realtime backbone) ----------
- * The banner is driven by the browser's own signals — the boot-time
- * navigator.onLine read plus the online/offline events — so it flips
- * the moment the connection drops or returns. Nothing is polled and
- * nothing is guessed: while offline, the service-worker shell and
- * every on-device tool keep working (the banner says exactly that);
- * AI generation calls simply fail honestly through humanErr. */
-(function () {
-  var bar = document.getElementById("offlineBar");
-  if (!bar) return;
-  var hideT = null;
-  function render() {
-    if (navigator.onLine) {
-      bar.classList.remove("show");
-      clearTimeout(hideT);
-      hideT = setTimeout(function () { bar.hidden = true; }, 380);
-    } else {
-      clearTimeout(hideT);
-      bar.hidden = false;
-      void bar.offsetWidth;
-      bar.classList.add("show");
-    }
-  }
-  window.addEventListener("online", render);
-  window.addEventListener("offline", render);
-  render();
+/* Jump-to-top: appears after the page (or the 3D rail) scrolls; one tap returns to the top. */
+(() => {
+  const btn = document.getElementById("jumpTop");
+  if (!btn) return;
+  const rail = document.querySelector(".m3-rail");
+  const isScrolled = () => (window.scrollY || 0) > 400 || (rail ? rail.scrollTop > 400 : false);
+  const update = () => { btn.hidden = !isScrolled(); };
+  window.addEventListener("scroll", update, { passive: true });
+  if (rail) rail.addEventListener("scroll", update, { passive: true });
+  btn.addEventListener("click", () => {
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const behavior = reduced ? "auto" : "smooth";
+    window.scrollTo({ top: 0, behavior });
+    if (rail) rail.scrollTo({ top: 0, behavior });
+  });
+  update();
 })();
