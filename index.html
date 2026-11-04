@@ -16,8 +16,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=JetBrains+Mono:wght@400..800&family=Sora:wght@400..800&display=swap">
 <link rel="stylesheet" href="css/style.css">
-<script>try{var _t=localStorage.getItem("msg_theme_v1");if(_t)document.documentElement.setAttribute("data-theme",_t);}catch(e){}document.documentElement.classList.add("js");try{if(localStorage.getItem("m4ster.animations")!=="1")document.documentElement.classList.add("anim-off");}catch(e){document.documentElement.classList.add("anim-off");}</script>
+<script>try{var _t=localStorage.getItem("msg_theme_v1");if(_t)document.documentElement.setAttribute("data-theme",_t);}catch(e){}document.documentElement.classList.add("js");try{if(localStorage.getItem("m4ster.animations")!=="1")document.documentElement.classList.add("anim-off");}catch(e){document.documentElement.classList.add("anim-off");}try{var _f=localStorage.getItem("m4ster.frost");if(_f!==null){var _fv=parseFloat(_f);if(isFinite(_fv))document.documentElement.style.setProperty("--frost",String(Math.min(92,Math.max(45,_fv))));}}catch(e){}try{var _c=localStorage.getItem("m4ster.cursor");if(_c)document.documentElement.setAttribute("data-cursor",_c);}catch(e){}try{if(localStorage.getItem("m4ster.trail")==="0")document.documentElement.setAttribute("data-trail","off");}catch(e){}</script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -54,6 +57,7 @@
     </div>
   </button>
   <div class="dim-flip" role="tablist" aria-label="Lab dimension">
+    <span class="flip-thumb" aria-hidden="true"></span>
     <button class="flip-btn active" id="flip2d" type="button">2D · Sprites</button>
     <button class="flip-btn" id="flip3d" type="button">3D · Mesh</button>
   </div>
@@ -70,6 +74,13 @@
     <a class="gh-link" href="https://github.com/m4sternoob/M4ster_FrameLab_OS" target="_blank" rel="noopener">GitHub</a>
   </div>
 </header>
+
+<!-- v8.13: offline state — shown/hidden live by the online/offline
+     listeners in app.js; the app shell and on-device tools keep working -->
+<div id="offlineBar" class="offline-bar" role="status" hidden>
+  <span class="offline-dot" aria-hidden="true"></span>
+  <span>You&rsquo;re offline &mdash; the tools already loaded on this device keep working. AI generation needs a connection.</span>
+</div>
 
 <!-- ============ v6 HERO: prompt-first (Seele pattern, zero login) ============ -->
 <section class="hero page-section" id="hero" data-mml="hero">
@@ -102,6 +113,38 @@
     <button class="tool-card" data-cat="slicer" type="button">
       <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="8" width="36" height="32" rx="4" fill="none" stroke="currentColor" stroke-width="3"/><line x1="6" y1="24" x2="42" y2="24" stroke="currentColor" stroke-width="3" stroke-dasharray="5 4"/><path d="M30 34l6 6M36 34l-6 6" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
       <span class="tool-text"><b>Sprite Slicer</b><span>slice a sprite sheet into frames &middot; 100% offline</span></span>
+    </button>
+    <button class="tool-card" data-cat="draglab" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="15" cy="15" r="5" fill="currentColor"/><path d="M19 19 L31 27" stroke="currentColor" stroke-width="3" stroke-dasharray="4 4"/><circle cx="35" cy="31" r="7" fill="none" stroke="currentColor" stroke-width="3"/><path d="M35 27v8M31 31h8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+      <span class="tool-text"><b>DragLab</b><span>pull any photo into shape &middot; point-drag warp + liquify brushes &middot; 100% offline</span></span>
+    </button>
+    <button class="tool-card" data-cat="cutout" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="7" width="34" height="34" rx="7" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="5 4"/><circle cx="24" cy="19" r="5.5" fill="currentColor"/><path d="M14.5 35c1.6-5.6 5-8.2 9.5-8.2s7.9 2.6 9.5 8.2" fill="currentColor"/><path d="M38 4l1.1 2.9L42 8l-2.9 1.1L38 12l-1.1-2.9L34 8l2.9-1.1z" fill="currentColor"/></svg>
+      <span class="tool-text"><b>Cutout Lab</b><span>AI background removal &middot; runs in your browser</span></span>
+    </button>
+    <button class="tool-card" data-cat="upscale" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M17 6H6v11M31 6h11v11M17 42H6V31M31 42h11V31" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><rect x="18" y="18" width="12" height="12" fill="currentColor"/></svg>
+      <span class="tool-text"><b>Upscale Lab</b><span>AI enlargement &middot; runs in your browser</span></span>
+    </button>
+    <button class="tool-card" data-cat="atlas" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="6" width="20" height="14" fill="currentColor"/><rect x="28" y="6" width="14" height="14" fill="currentColor" opacity=".55"/><rect x="6" y="22" width="12" height="20" fill="currentColor" opacity=".55"/><rect x="20" y="22" width="22" height="9" fill="currentColor"/><rect x="20" y="33" width="22" height="9" fill="currentColor" opacity=".55"/></svg>
+      <span class="tool-text"><b>Atlas Packer</b><span>loose frames &rarr; one sprite sheet + manifest &middot; 100% offline</span></span>
+    </button>
+    <button class="tool-card" data-cat="normalmap" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="16" fill="currentColor" opacity=".3"/><path d="M24 8a16 16 0 0 1 0 32z" fill="currentColor"/><circle cx="19" cy="18" r="3.5" fill="var(--panel)"/></svg>
+      <span class="tool-text"><b>Normal Map Lab</b><span>flat sprite &rarr; normal + AO + specular maps &middot; 100% offline</span></span>
+    </button>
+    <button class="tool-card" data-cat="tiler" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="6" width="16" height="16" fill="currentColor"/><rect x="26" y="6" width="16" height="16" fill="currentColor" opacity=".55"/><rect x="6" y="26" width="16" height="16" fill="currentColor" opacity=".55"/><rect x="26" y="26" width="16" height="16" fill="currentColor"/><path d="M24 6v36M6 24h36" stroke="var(--panel)" stroke-width="2"/></svg>
+      <span class="tool-text"><b>Seamless Tiler</b><span>any texture &rarr; seamless repeat &middot; 100% offline</span></span>
+    </button>
+    <button class="tool-card" data-cat="palette" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="15" cy="14" r="6" fill="currentColor"/><circle cx="31" cy="12" r="5" fill="currentColor" opacity=".55"/><circle cx="36" cy="27" r="6" fill="currentColor" opacity=".75"/><circle cx="20" cy="29" r="7" fill="currentColor" opacity=".4"/><circle cx="30" cy="39" r="4" fill="currentColor"/></svg>
+      <span class="tool-text"><b>Palette Lab</b><span>pull a sprite's colors, swap &amp; recolor &middot; 100% offline</span></span>
+    </button>
+    <button class="tool-card" data-cat="gif" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="15" y="4" width="18" height="40" rx="3" fill="currentColor" opacity=".85"/><rect x="18" y="8" width="3" height="4" fill="var(--panel)"/><rect x="18" y="16" width="3" height="4" fill="var(--panel)"/><rect x="18" y="24" width="3" height="4" fill="var(--panel)"/><rect x="18" y="32" width="3" height="4" fill="var(--panel)"/><rect x="27" y="8" width="3" height="4" fill="var(--panel)"/><rect x="27" y="16" width="3" height="4" fill="var(--panel)"/><rect x="27" y="24" width="3" height="4" fill="var(--panel)"/><rect x="27" y="32" width="3" height="4" fill="var(--panel)"/><path d="M21 20l7 4-7 4z" fill="var(--panel)"/></svg>
+      <span class="tool-text"><b>GIF Sheet</b><span>animated GIF &rarr; sprite sheet + timings &middot; 100% offline</span></span>
     </button>
   </div>
 </section>
@@ -276,9 +319,11 @@
     <div class="canvas-wrap">
       <canvas id="stage"></canvas>
       <div id="stageMsg" class="stage-msg">Pick a category, describe your sprite, hit generate.</div>
+      <div id="stageSkel" class="skel skel-stage" hidden aria-hidden="true"></div>
     </div>
 
     <div id="pixelSide" class="pixel-side" hidden>
+      <p class="dim" id="pxEmpty">Upload an image to see it here.</p>
       <figure class="px-fig">
         <canvas id="pxOrig"></canvas>
         <figcaption id="pxOrigCap" class="dim">original</figcaption>
@@ -289,11 +334,116 @@
       </figure>
     </div>
 
+    <section id="draglab" class="draglab-side" hidden aria-label="DragLab — point-drag photo warp">
+      <div class="draglab-box" id="dlStageBox">
+        <canvas id="dlCanvas" width="480" height="360"></canvas>
+        <div class="draglab-empty" id="dlEmpty">
+          <p><strong>DragLab</strong> — pull any photo into shape.</p>
+          <p class="dim">Drop an image here, paste one, or hit <b>Try the sample</b> in the panel.<br>Then click the photo to add a point and drag it.</p>
+        </div>
+      </div>
+      <p class="draglab-hint" id="dlStageHint">Click to add a point, drag it to pull the picture.</p>
+      <p class="draglab-readout dim" id="dlReadout" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="cutout" class="cutout-side" hidden aria-label="Cutout Lab — AI background removal">
+      <div class="cutout-box" id="coStageBox">
+        <canvas id="coCanvas" width="480" height="360"></canvas>
+        <div class="cutout-empty" id="coEmpty">
+          <p><strong>Cutout Lab</strong> — AI background removal, in your browser.</p>
+          <p class="dim">Drop a photo here, paste one, or hit <b>Try the sample</b> in the panel.<br>Then hit <b>Remove background</b>.</p>
+        </div>
+      </div>
+      <p class="cutout-hint">Your photo never leaves your device — the AI runs right here.</p>
+      <div class="up-progress co-progress" id="coProgressRow" hidden><div class="up-progress-bar" id="coProgressBar"></div></div>
+      <p class="cutout-readout dim" id="coReadout" role="status" aria-live="polite"></p>
+      <button type="button" class="btn-ghost retry-dl" id="coRetry" hidden>Retry download</button>
+    </section>
+
+    <section id="upscale" class="upscale-side" hidden aria-label="Upscale Lab — AI image enlargement">
+      <div class="upscale-box" id="upStageBox">
+        <canvas id="upCanvas" width="480" height="360"></canvas>
+        <div class="upscale-empty" id="upEmpty">
+          <p><strong>Upscale Lab</strong> — AI enlargement, in your browser.</p>
+          <p class="dim">Drop an image here, paste one, or hit <b>Try the sample</b> in the panel.<br>Then hit <b>Upscale &times;4</b>.</p>
+        </div>
+      </div>
+      <div class="up-compare" id="upCompareRow" hidden>
+        <span class="dim">before</span>
+        <input type="range" id="upCompare" min="0" max="100" value="50" aria-label="before and after comparison">
+        <span class="dim">after</span>
+      </div>
+      <div class="up-progress" id="upProgressRow" hidden><div class="up-progress-bar" id="upProgressBar"></div></div>
+      <p class="upscale-hint">Drag the slider to compare — your image never leaves your device.</p>
+      <p class="upscale-readout dim" id="upReadout" role="status" aria-live="polite"></p>
+      <button type="button" class="btn-ghost retry-dl" id="upRetry" hidden>Retry download</button>
+    </section>
+
+    <section id="atlas" class="atlas-side" hidden aria-label="Atlas Packer — pack loose sprites into one sheet">
+      <div class="atlas-box" id="atStageBox">
+        <canvas id="atCanvas" width="480" height="360"></canvas>
+        <div class="atlas-empty" id="atEmpty">
+          <p><strong>Atlas Packer</strong> — turn loose frames into one game-ready sprite sheet.</p>
+          <p class="dim">Drop images here, paste them, or hit <b>Add images</b> in the panel.<br>Then hit <b>Pack</b>.</p>
+        </div>
+      </div>
+      <p class="atlas-hint">Sprites are trimmed of transparent borders — the manifest records the trim so engines restore each frame exactly.</p>
+      <p class="atlas-readout dim" id="atReadout" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="normalmap" class="normalmap-side" hidden aria-label="Normal Map Lab — normal, AO and specular maps from a sprite">
+      <div class="normalmap-box" id="nmStageBox">
+        <canvas id="nmCanvas" width="480" height="360"></canvas>
+        <div class="normalmap-empty" id="nmEmpty">
+          <p><strong>Normal Map Lab</strong> — turn a flat sprite into a lit one.</p>
+          <p class="dim">Drop an image here, paste one, or hit <b>Try the sample</b> in the panel.<br>Then pick a map and export it.</p>
+        </div>
+      </div>
+      <p class="normalmap-hint">In Lit view, move your pointer over the picture — the light follows.</p>
+      <p class="normalmap-readout dim" id="nmReadout" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="tiler" class="tiler-side" hidden aria-label="Seamless Tiler — make any texture repeat without visible seams">
+      <div class="tiler-box" id="tlStageBox">
+        <canvas id="tlCanvas" width="480" height="360"></canvas>
+        <div class="tiler-empty" id="tlEmpty">
+          <p><strong>Seamless Tiler</strong> — make any texture repeat without visible seams.</p>
+          <p class="dim">Drop a texture here, paste one, or hit <b>Try the sample</b> in the panel.<br>Heal the seams, check the 3&times;3, then export.</p>
+        </div>
+      </div>
+      <p class="tiler-hint">Heal cross-fades a band at each edge into the opposite side — check the Offset view: when the centre cross melts away, the tile repeats clean.</p>
+      <p class="tiler-readout dim" id="tlReadout" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="palette" class="palette-side" hidden aria-label="Palette Lab — extract, swap and spin a sprite's colors">
+      <div class="palette-box" id="plStageBox">
+        <canvas id="plCanvas" width="480" height="360"></canvas>
+        <div class="palette-empty" id="plEmpty">
+          <p><strong>Palette Lab</strong> — pull a sprite's colors out.</p>
+          <p class="dim">Drop a sprite here, paste one, or hit <b>Try the sample</b> in the panel.<br>Then click a color to swap it, or spin a variant.</p>
+        </div>
+      </div>
+      <p class="palette-hint">Tolerance sets how far a colour can drift from the one you picked and still swap — pixels inside it swap fully, and a soft band just beyond it blends.</p>
+      <p class="palette-readout dim" id="plReadout" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="gif" class="gif-side" hidden aria-label="GIF Sheet — turn an animated GIF into a sprite sheet">
+      <div class="gif-box" id="gfStageBox">
+        <canvas id="gfCanvas" width="480" height="360"></canvas>
+        <div class="gif-empty" id="gfEmpty">
+          <p><strong>GIF Sheet</strong> — an animated GIF in, a sprite sheet out.</p>
+          <p class="dim">Drop a GIF here, paste one, or hit <b>Try the sample</b> in the panel.<br>Every frame lands in the sheet, with its timing in the JSON.</p>
+        </div>
+      </div>
+      <p class="gif-hint">Frames the file stamps at 0–10 ms are stored as 100 ms in the sheet timings — browsers clamp those the same way.</p>
+      <p class="gif-readout dim" id="gfReadout" role="status" aria-live="polite"></p>
+    </section>
+
     <div id="retryBar" class="retry-bar" hidden>
       <span class="retry-msg" id="retryMsg"></span>
       <div class="retry-actions">
         <button id="retryBtn" class="btn-ghost">Retry with stricter prompt</button>
-        <button id="procBtn" class="btn-ghost">Use Procedural instead</button>
+        <button id="procBtnRetry" class="btn-ghost">Use Procedural instead</button>
       </div>
     </div>
 
@@ -335,7 +485,7 @@
       </div>
       <div class="export-box">
         <div class="field-label">Export</div>
-        <button class="btn bundle" id="dlBundle" disabled>⬇ Download bundle <span class="dim">PNG + GIF + JSON</span></button>
+        <button class="btn bundle" id="dlBundle" disabled>⬇ Export bundle <span class="dim">PNG + GIF + JSON</span></button>
         <button class="btn" id="dlGodot" disabled>Export for Godot <span class="dim">.tres + PNG</span></button>
         <button class="btn" id="dlUnity" disabled>Export for Unity <span class="dim">.anim builder pack</span></button>
         <details class="more-exports">
@@ -343,7 +493,7 @@
           <button class="btn" id="dlSheet" disabled>sprite sheet PNG</button>
           <button class="btn" id="dlJson" disabled>atlas manifest JSON</button>
           <button class="btn ghost" id="dlFrames" disabled>frames (individual PNGs)</button>
-          <button class="btn" id="dlAnim" disabled>Download animation</button>
+          <button class="btn" id="dlAnim" disabled>Export animation</button>
         </details>
         <button class="btn install-app" id="installApp" hidden>📲 Install App</button>
         <div class="export-note">Bundle = sheet PNG + animated GIF preview + manifest (absolute frame rects, fps, loop). Your game reads the rects — never recompute.</div>
@@ -369,7 +519,7 @@
 
       <div class="m3-chainbox">
         <strong>Text to 3D</strong>
-        <p>Describe it — your words go straight to a text-to-3D model and the mesh builds right here. No drawing step, the 2D side is never touched.</p>
+        <p>Describe it — your words go straight to Hunyuan3D-2, a text-to-3D model, and the mesh builds right here. Direct meshes are shape-only (untextured, ready for your own materials); if the direct route is unavailable, the studio draws an image from your words and builds from that instead.</p>
         <div class="m3-tsteps" id="m3TSteps"><span data-s="1" class="on">1 · Describe</span><span data-s="2">2 · Build mesh</span></div>
         <div class="m3-chain-row"><input type="text" id="m3ChainInput" placeholder="e.g. a tiny robot knight" aria-label="Describe a 3D model"><button type="button" id="m3ChainBtn">Generate 3D model</button></div>
         <img id="m3ChainThumb" class="m3-chain-thumb" alt="The image drawn for your model" hidden>
@@ -428,12 +578,31 @@
         <button type="button" id="m3HintGen" class="m3-hint-btn">&#10024; Generate Image</button>
       </div>
 
-      <label class="m3-label">Resolution <span class="dim">(texture size, where the model supports it)</span></label>
-      <div class="m3-seg m3-res" role="group" aria-label="Texture resolution">
-        <button type="button" class="m3-seg-btn active" data-tex="1024">Standard</button>
-        <button type="button" class="m3-seg-btn" data-tex="2048">Ultra 2K</button>
-        <button type="button" class="m3-seg-btn" data-tex="4096">Ultra 4K</button>
+      <label class="m3-label" for="m3TexSize">Quality</label>
+      <div class="m3-seg m3-quality" role="group" aria-label="Generation quality">
+        <button type="button" class="m3-seg-btn" data-tier="speed">Speed</button>
+        <button type="button" class="m3-seg-btn active" data-tier="standard">Standard</button>
+        <button type="button" class="m3-seg-btn" data-tier="hd">HD</button>
       </div>
+      <div class="m3-qparams">
+        <div class="m3-qparam">
+          <span class="m3-qlabel" id="m3TexLabel">Texture size</span>
+          <select id="m3TexSize" class="m3-qselect" aria-labelledby="m3TexLabel">
+            <option value="1024">1024 · 1K</option>
+            <option value="2048" selected>2048 · 2K</option>
+            <option value="4096">4096 · 4K</option>
+          </select>
+        </div>
+        <div class="m3-qparam">
+          <span class="m3-qlabel" id="m3FaceLabel">Face target</span>
+          <select id="m3FaceTarget" class="m3-qselect" aria-labelledby="m3FaceLabel">
+            <option value="100000">100k faces</option>
+            <option value="300000" selected>300k faces</option>
+            <option value="500000">500k faces</option>
+          </select>
+        </div>
+      </div>
+      <p class="m3-q-note" id="m3QNote">Texture and face controls apply when TRELLIS.2 builds the mesh.</p>
 
       <details class="m3-token-details">
         <summary>Hugging Face token (optional — lifts the free GPU quota)</summary>
@@ -444,10 +613,13 @@
       <div class="m3-costline" id="m3CostLine">Free &middot; no signup &middot; no keys</div>
       <button id="m3Go" class="m3-generate" type="button" disabled>&#10024; Generate</button>
       <div id="m3Status" class="m3-status" role="status" aria-live="polite">Pick an image to start — it's free.</div>
+      <button id="m3TryAuto" class="btn-ghost" type="button" hidden>Try AUTO (all providers)</button>
+      <button id="m3RetryStd" class="btn-ghost" type="button" hidden>Retry in Standard</button>
     </aside>
 
     <!-- ===== stage: Meshy viewer layout ===== -->
     <div class="m3-stage" id="m3Stage">
+      <div id="m3Skel" class="skel skel-m3" hidden aria-hidden="true"></div>
       <div class="m3-empty" id="m3StageEmpty">
         <h3>Ready for a new 3D model?</h3>
         <div class="m3-steps">
@@ -547,6 +719,7 @@
           <div class="m3-env-head">Engine Bridge — take this mesh into…</div>
           <div class="m3-bridge-list" id="m3BridgeList"></div>
           <p class="m3-bridge-note">One GLB, every engine. Downloads are named per engine so your project folder stays tidy.</p>
+          <button type="button" class="m3-bridge-guide" id="m3BridgeGuide">Download import guide</button>
         </div>
 
         <div class="m3-docks">
@@ -717,6 +890,10 @@
   </div>
   <div class="assets-grid" id="assetsGrid"></div>
   <p class="assets-empty" id="assetsEmpty">Nothing here yet — generate a sprite or a mesh and it shows up here.</p>
+  <div class="assets-empty-actions" id="assetsEmptyActions" hidden>
+    <button type="button" class="btn-ghost" id="assetsGoSprite">Generate your first sprite</button>
+    <button type="button" class="btn-ghost" id="assetsShowAll" hidden>Show all</button>
+  </div>
   <div class="assets-foot" id="assetsFoot" hidden>
     <span id="assetsSelCount">0 selected</span>
     <button id="assetsDlSel" class="assets-upload" type="button">&#11015; Download selected</button>
@@ -745,6 +922,17 @@
   <p class="dim" style="margin:2px 0 0;font-size:12px">Off = still site: no drifting background, marquees, logo pulse or scroll entrances. Sprite previews still play.</p>
   <div class="cust-label">Theme</div>
   <div class="swatches" id="swatches"></div>
+  <div class="cust-label">Glass</div>
+  <div class="cust-row">
+    <span>Frost transparency</span>
+    <input type="range" id="frostRange" min="45" max="92" value="74" aria-label="Frost transparency">
+  </div>
+  <div class="cust-label">Cursor</div>
+  <div class="cursor-styles" id="cursorStyles"></div>
+  <div class="cust-row">
+    <span>Cursor trail</span>
+    <button class="switch" id="trailToggle" role="switch" aria-checked="true" aria-label="Toggle cursor trail"><span class="knob"></span></button>
+  </div>
   <div class="cust-label">Background aura</div>
   <div class="cust-row">
     <span>Aurora background</span>
@@ -805,8 +993,5 @@
   });
 })();
 </script>
-<button type="button" id="jumpTop" class="jump-top" aria-label="Jump to top" title="Jump to top" hidden>
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-</button>
 </body>
 </html>
