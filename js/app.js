@@ -11923,7 +11923,10 @@ function wire3DLab() {
   glbLink.addEventListener("click", () => toastExport(glbLink.download || "framelab-mesh.glb", Number(glbLink.dataset.size) || undefined));
   objLink.addEventListener("click", () => toastExport(objLink.download || "framelab-mesh.obj", Number(objLink.dataset.size) || undefined));
 
-  go.addEventListener("click", async () => {
+  /* the Generate routine, named so the escape-hatch buttons can call
+   * it directly instead of synthesising a click on #m3Go (see the
+   * Retry in Standard handler below for why that matters) */
+  async function m3Generate() {
     if (!file || running) return;
     running = true;
     go.disabled = true;
@@ -12028,7 +12031,8 @@ function wire3DLab() {
       go.disabled = !file;
       go.textContent = "✨ Generate";
     }
-  });
+  }
+  go.addEventListener("click", m3Generate);
   const tryAutoBtn2 = document.getElementById("m3TryAuto");
   if (tryAutoBtn2) tryAutoBtn2.addEventListener("click", () => {
     tryAutoBtn2.hidden = true;
@@ -12040,7 +12044,15 @@ function wire3DLab() {
   if (retryStdBtn) retryStdBtn.addEventListener("click", () => {
     retryStdBtn.hidden = true;
     m3SetTier("standard");
-    if (!go.disabled) go.click();
+    /* call the routine directly: the old path synthesised go.click()
+     * behind an `if (!go.disabled)` guard, and go.disabled is written
+     * by three other places (run start, the run's finally, setFile's
+     * sync) — with the flag set, the retry silently stopped after
+     * switching tiers: no run, no feedback, stale error left up.
+     * m3Generate's own !file/running check is the only gate, and its
+     * run start hides this button again like any fresh Generate. */
+    say("");
+    m3Generate();
   });
 }
 

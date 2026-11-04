@@ -112,6 +112,13 @@ html[data-theme="studio"] {
  * keeps the white text as designed; the 2D/3D flip's active label
  * already uses --on-accent over its thumb.) */
 html[data-theme="studio"] .save-btn { color: var(--on-accent); }
+/* Gallery contrast fix: the flip toggle's inactive label rides
+ * var(--dim) (#5f5f5c), which washes out on Gallery's near-white
+ * glass track — under Gallery only it takes a darker ink. The
+ * active label (accent thumb + --on-accent text) is untouched, as
+ * is every other theme. */
+html[data-theme="gallery"] .flip-btn:not(.active) { color: #45453f; }
+html[data-theme="gallery"] .flip-btn:not(.active):hover { color: var(--text); }
 
 /* ---------- v8.12: liquid-glass tokens — ONE frosted material for both
  * sides, expressed in each theme's own hues. --frost is the single
