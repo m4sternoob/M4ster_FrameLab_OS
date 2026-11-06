@@ -4,25 +4,29 @@
  * No frameworks, no webfonts, no build step. */
 
 :root {
-  --bg: #0c0916;
-  --ink: #12101f;
-  --panel: #151223;
-  --line: #2a2440;
-  --text: #ede9fe;
-  --mute: #a89fc7;
-  --dim: #7c739e;
-  --violet: #a78bfa;
-  --violet-deep: #7c3aed;
-  --violet-soft: #c4b5fd;
-  --on-accent: #0c0916;
+  /* v8.16: the unthemed fallback IS the identity — Studio neutral with
+   * the maker's amber brand. (It was a purple wash; a first paint with
+   * no saved theme now lands on the studio look, never purple.) */
+  --bg: #0a0a0b;
+  --ink: #060607;
+  --panel: #141416;
+  --line: #26262b;
+  --text: #f2f2f0;
+  --mute: #a3a3ab;
+  --dim: #8b8b94;
+  --violet: #f5a524;
+  --violet-deep: #d97706;
+  --violet-soft: #fbbf24;
+  --on-accent: #1a1206;
+  --brand: #f5a524;
   --amber: #fbbf24;
   --danger: #f43f5e;
-  --orb-1: #8b5cf6;
-  --orb-2: #d946ef;
-  --orb-3: #6366f1;
-  --orb-opacity: .5;
+  --orb-1: #b45309;
+  --orb-2: #3f3f46;
+  --orb-3: #92400e;
+  --orb-opacity: .38;
   --aura-intensity: .7;
-  --glow: rgba(139, 92, 246, .35);
+  --glow: rgba(245, 165, 36, .26);
   --vignette: rgba(0, 0, 0, .22);
   --r: 14px;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
@@ -71,7 +75,7 @@ html[data-theme="ember"] {
 }
 html[data-theme="forest"] {
   --bg: #101a14; --ink: #121e17; --panel: #15211a; --line: #2f4a3a;
-  --text: #e9f5ec; --mute: #8cae95; --dim: #5f7d68;
+  --text: #e9f5ec; --mute: #8cae95; --dim: #6d9077;
   --violet: #22c55e; --violet-deep: #15803d; --violet-soft: #4ade80; --on-accent: #062312;
   --amber: #fbbf24; --danger: #f87171;
   --orb-1: #22c55e; --orb-2: #0d9488; --orb-3: #84cc16; --orb-opacity: .45;
@@ -82,6 +86,7 @@ html[data-theme="porcelain"] {
   --text: #172b4d; --mute: #626f86; --dim: #8993a4;
   --violet: #0c66e4; --violet-deep: #0055cc; --violet-soft: #388bff; --on-accent: #ffffff;
   --amber: #b45309; --danger: #e5493a;
+  --brand: #b45309;
   --orb-1: #bae6fd; --orb-2: #ddd6fe; --orb-3: #fed7aa; --orb-opacity: .7;
   --glow: rgba(12, 102, 228, .22); --vignette: rgba(23, 43, 77, .08);
 }
@@ -94,20 +99,26 @@ html[data-theme="gallery"] {
   --bg: #f6f6f3; --ink: #e8e8e1; --panel: #ffffff; --line: #d9d9d2;
   --text: #151515; --mute: #59595a; --dim: #5f5f5c;
   --violet: #151515; --violet-deep: #000000; --violet-soft: #454544; --on-accent: #ffffff;
+  --brand: #b45309;
   --amber: #b45309; --danger: #d92d20;
   --orb-1: #e3e3da; --orb-2: #dcdce4; --orb-3: #e9dfca; --orb-opacity: .55;
   --glow: rgba(21, 21, 21, .16); --vignette: rgba(21, 21, 21, .05);
 }
 html[data-theme="studio"] {
+  /* v8.16: Studio is the default identity, and its accent is the
+   * maker's colour — warm amber — over the near-black neutral chrome.
+   * The generated content carries the colour; the chrome stays quiet.
+   * --dim lifted #71717a -> #8b8b94 for small-text contrast on #0a0a0b. */
   --bg: #0a0a0b; --ink: #060607; --panel: #141416; --line: #26262b;
-  --text: #f2f2f0; --mute: #a3a3ab; --dim: #71717a;
-  --violet: #e9e9ee; --violet-deep: #c6c6cf; --violet-soft: #f5f5f7; --on-accent: #0a0a0b;
+  --text: #f2f2f0; --mute: #a3a3ab; --dim: #8b8b94;
+  --violet: #f5a524; --violet-deep: #d97706; --violet-soft: #fbbf24; --on-accent: #1a1206;
+  --brand: #f5a524;
   --amber: #fbbf24; --danger: #f87171;
-  --orb-1: #3f3f46; --orb-2: #52525b; --orb-3: #27272a; --orb-opacity: .5;
-  --glow: rgba(233, 233, 238, .26); --vignette: rgba(0, 0, 0, .3);
+  --orb-1: #b45309; --orb-2: #3f3f46; --orb-3: #92400e; --orb-opacity: .38;
+  --glow: rgba(245, 165, 36, .26); --vignette: rgba(0, 0, 0, .3);
 }
 /* Studio contrast fix: the Customize save button hardcodes white
- * text on the accent, which is unreadable on Studio's silver accent —
+ * text on the accent, which is unreadable on Studio's amber accent —
  * it takes the theme's on-accent ink instead. (Gallery's black accent
  * keeps the white text as designed; the 2D/3D flip's active label
  * already uses --on-accent over its thumb.) */
@@ -119,6 +130,16 @@ html[data-theme="studio"] .save-btn { color: var(--on-accent); }
  * is every other theme. */
 html[data-theme="gallery"] .flip-btn:not(.active) { color: #45453f; }
 html[data-theme="gallery"] .flip-btn:not(.active):hover { color: var(--text); }
+
+/* v8.16: the two identity themes drop the frosted-glass sameness —
+ * flat surfaces with hairline borders (the gallery/studio material
+ * language), soft single shadow. The Frost slider still drives the
+ * surface opacity through --glass-bg; only the blur goes. Other
+ * themes keep the frost — it is their chosen look, not the default. */
+html[data-theme="gallery"], html[data-theme="studio"] {
+  --glass-blur: none;
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, .18), 0 10px 30px -18px rgba(0, 0, 0, .35);
+}
 
 /* ---------- v8.12: liquid-glass tokens — ONE frosted material for both
  * sides, expressed in each theme's own hues. --frost is the single
@@ -755,17 +776,17 @@ section.page-section { scroll-margin-top: 78px; }
 }
 
 /* ---------- hero ---------- */
-.hero { padding: 60px 20px 30px; text-align: center; }
+.hero { padding: 44px 20px 26px; text-align: center; }
 .hero-inner { max-width: 780px; margin: 0 auto; }
-.hero-eyebrow {
-  font-family: var(--mono); font-size: 11px; letter-spacing: 3px;
-  color: var(--violet); margin-bottom: 16px; font-weight: 700;
-}
+/* v8.16: the tracked-caps eyebrow label is gone (Hallmark floor) —
+ * the headline speaks first. */
 .hero-title {
   font-size: var(--hero-size); line-height: 1.04;
   letter-spacing: -1.5px; margin: 0 0 14px; font-weight: 800;
 }
-.hero-title em { font-style: normal; color: var(--violet); }
+/* v8.16: no one-coloured-word headline — the emphasis word keeps the
+ * headline's own colour; italics carry the emphasis. */
+.hero-title em { font-style: italic; color: inherit; }
 .hero-sub { color: var(--mute); font-size: 16px; max-width: 580px; margin: 0 auto 24px; line-height: 1.6; }
 .hero-prompt-row { display: flex; gap: 10px; max-width: 660px; margin: 0 auto; align-items: stretch; }
 #heroPrompt {
@@ -781,7 +802,7 @@ section.page-section { scroll-margin-top: 78px; }
 .hero-hints {
   display: flex; gap: 18px; justify-content: center; flex-wrap: wrap;
   margin-top: 18px; font-family: var(--mono); font-size: 11px; color: var(--dim);
-  text-transform: uppercase; letter-spacing: 1px;
+  /* v8.16: sentence case, no tracking — these are facts, not a label strip. */
 }
 .hero-hints span::before { content: "✓ "; color: var(--violet); }
 
@@ -885,7 +906,7 @@ section.page-section { scroll-margin-top: 78px; }
 }
 .marquee-track { display: inline-flex; gap: 26px; align-items: baseline; animation: marquee 28s linear infinite; }
 .marquee-track span {
-  font-family: var(--mono); font-size: 13px; letter-spacing: 3px; text-transform: uppercase;
+  font-family: var(--mono); font-size: 13px; letter-spacing: .5px;
   color: var(--dim); white-space: nowrap;
 }
 .marquee-track i { color: var(--violet); font-style: normal; }
@@ -1000,9 +1021,12 @@ body.no-rgb .marquee::before, body.no-rgb .marquee::after { display: none; }
 @media (prefers-reduced-motion: reduce) { #cursor-trail { display: none; } }
 
 /* ---------- v6.8: logo letter glow (each letter glows) ---------- */
-.monogram .glow-m { filter: drop-shadow(0 0 5px #a78bfa) drop-shadow(0 0 12px rgba(167,139,250,.6)); animation: letterPulse 3s ease-in-out infinite; }
-.monogram .glow-f { filter: drop-shadow(0 0 5px #7dd3fc) drop-shadow(0 0 12px rgba(125,211,252,.6)); animation: letterPulse 3s ease-in-out .5s infinite; }
-.monogram .glow-l { filter: drop-shadow(0 0 4px #a78bfa) drop-shadow(0 0 10px rgba(167,139,250,.6)); animation: letterPulse 3s ease-in-out 1s infinite; }
+/* v8.16: the logo glow was hardcoded purple/blue in every theme —
+ * it now follows the maker's brand (outer letters) and the active
+ * theme accent (middle letter). */
+.monogram .glow-m { filter: drop-shadow(0 0 5px var(--brand)) drop-shadow(0 0 12px color-mix(in srgb, var(--brand) 60%, transparent)); animation: letterPulse 3s ease-in-out infinite; }
+.monogram .glow-f { filter: drop-shadow(0 0 5px var(--violet-soft)) drop-shadow(0 0 12px color-mix(in srgb, var(--violet-soft) 60%, transparent)); animation: letterPulse 3s ease-in-out .5s infinite; }
+.monogram .glow-l { filter: drop-shadow(0 0 4px var(--brand)) drop-shadow(0 0 10px color-mix(in srgb, var(--brand) 60%, transparent)); animation: letterPulse 3s ease-in-out 1s infinite; }
 @keyframes letterPulse { 0%, 100% { opacity: .92; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .monogram .glow-m, .monogram .glow-f, .monogram .glow-l { animation: none; }
@@ -1019,8 +1043,10 @@ body.no-rgb .marquee::before, body.no-rgb .marquee::after { display: none; }
 @keyframes logoFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 
 /* ---------- focus-visible polish (Lisbon a11y spirit) ---------- */
+/* v8.16: the focus ring is the brand amber in every theme — one
+ * recognisable, high-contrast ring wherever the keyboard lands. */
 :focus-visible {
-  outline: 2px solid var(--violet);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -2079,13 +2105,13 @@ body.dim-3d .fresh-lab { display: none; }
 .fresh-set { display: flex; gap: 14px; }
 .fresh-card { min-width: 228px; max-width: 228px; border: 1px solid var(--line); border-radius: 14px;
   background: var(--panel); padding: 13px 15px; }
-.fresh-chip { font: 700 9.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--violet); }
+.fresh-chip { font: 700 9.5px var(--mono); letter-spacing: .05em; color: var(--violet); }
 .fresh-name { font-weight: 800; font-size: 16px; margin: 5px 0 3px; }
 .fresh-note { color: var(--dim); font-size: 12.5px; line-height: 1.45; }
 @media (prefers-reduced-motion: reduce) { .fresh-track { animation: none; } .fresh-lab { transition: none; opacity: 1; transform: none; } }
 #lab3d { width: 100%; max-width: 1960px; margin: 26px auto 60px; padding: 0 18px; }
 .lab3d-card { border: 1px solid var(--line); border-radius: 20px; padding: 30px; background: var(--panel); }
-.lab3d-badge { font: 700 10.5px var(--mono); letter-spacing: .16em; color: var(--violet); }
+.lab3d-badge { font: 700 10.5px var(--mono); letter-spacing: .05em; color: var(--violet); }
 .lab3d-card h2 { font-size: 30px; margin: 10px 0 8px; }
 .lab3d-lede { color: var(--dim); max-width: 62ch; line-height: 1.55; }
 .lab3d-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 20px 0; }
@@ -3339,3 +3365,18 @@ body.glass-live .m3-modetab.active {
 #m3TryAuto[hidden] { display: none; }
 .assets-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .assets-empty-actions[hidden] { display: none; }
+
+/* ---------- v8.16: Hallmark floor — selection + reduced motion ----------
+ * Text selection wears the brand. And one blanket reduced-motion rule
+ * stands behind the per-component ones above: if the visitor's system
+ * asks for reduced motion, every animation and transition on the page
+ * settles, no exceptions by component. */
+::selection { background: var(--brand); color: #1a1206; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

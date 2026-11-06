@@ -9160,17 +9160,19 @@ document.addEventListener("DOMContentLoaded", init);
  * Doesn't touch the generation pipeline. */
 (function () {
   "use strict";
-  /* Forest (green) first: it is the default theme, the first swatch in
-   * the picker, and the fallback for any unknown saved value. */
+  /* Studio first: since v8.16 it is the default theme — the creative-
+   * studio neutral with the maker's amber accent — the first swatch in
+   * the picker, and the fallback for any unknown saved value. Gallery
+   * is its light twin, second. The rest are the maker's choice. */
   var THEMES = [
+    { id: "studio",    name: "Studio",      swatch: "#f5a524" },
+    { id: "gallery",   name: "Gallery",     swatch: "#151515" },
     { id: "forest",    name: "Forest",      swatch: "#22c55e" },
     { id: "ember",     name: "Ember",       swatch: "#f97316" },
     { id: "violet",    name: "Violet dusk", swatch: "#8b5cf6" },
     { id: "midnight",  name: "Midnight",    swatch: "#0c66e4" },
     { id: "ocean",     name: "Ocean",       swatch: "#0ea5e9" },
     { id: "porcelain", name: "Porcelain",   swatch: "#e2e8f0" },
-    { id: "gallery",   name: "Gallery",     swatch: "#151515" },
-    { id: "studio",    name: "Studio",      swatch: "#e9e9ee" },
   ];
   var LS_THEME = "msg_theme_v1", LS_AURA = "msg_aura_v1";
 
@@ -9418,7 +9420,7 @@ document.addEventListener("DOMContentLoaded", init);
       /* all settings already persist on change — this force-saves the full
        * snapshot (theme + aura + rgb) and confirms visually */
       try {
-        lsSet(LS_THEME, document.documentElement.getAttribute("data-theme") || "forest");
+        lsSet(LS_THEME, document.documentElement.getAttribute("data-theme") || "studio");
         lsSet("m4ster.animations", animationsOn() ? "1" : "0");
         lsSet(LS_FROST, String(readFrost()));
         lsSet(LS_CURSOR, readCursor());
@@ -9433,7 +9435,7 @@ document.addEventListener("DOMContentLoaded", init);
       }
     });
 
-    applyTheme(lsGet(LS_THEME) || "forest", false);
+    applyTheme(lsGet(LS_THEME) || "studio", false);
     applyAura();
     applyRGB();
     applyFrost();
@@ -10061,7 +10063,7 @@ if (document.readyState === "loading") {
   }
   sizeTrail();
   window.addEventListener("resize", sizeTrail);
-  var themeGlow = "34,197,94"; /* forest green default; synced from --violet below */
+  var themeGlow = "245,165,36"; /* studio amber default; synced from --violet below */
   /* perf: the trail glow is pre-rendered ONCE into a sprite at the max
    * radius (90px) instead of building a fresh radial gradient per spot
    * per frame. The sprite's stops are exactly the ones the per-spot
