@@ -27,6 +27,13 @@ sheet PNG plus an atlas manifest JSON your game can read directly.
 
 ![Text to 3D — words straight to a mesh](assets/framelab-3d-mesh.gif)
 
+## Latest — a global error safety net
+
+The current release stays v8.16; this change rides on top of it (PR #2).
+
+- **Unhandled failures now land in the error UI.** A global safety net listens for uncaught errors and unhandled promise rejections anywhere in the app. When one escapes a step's own handling, the wizard no longer sits on a spinner: the running step is marked failed, the stage clears, and the failure is shown with the existing retry bar and error status — an explanation and a way out, every time.
+- **Built on the existing error surface, not a second one.** The net reuses the stage message, retry and status-bar machinery from the v8.13 six-state pass, releases the busy state, suppresses duplicate reports of the same failure inside a two-second window, and ignores resource-load errors that carry no message.
+
 ## v8.13 — The six states a tool suite owes its users
 
 - **Loading tells the truth.** Model downloads for Cutout and Upscaler now drive a real progress bar from the actual bytes received ("Downloading the Cutout model — 43%"); work that has no honest percentage (background-removal inference, AI queues) shows its real stage instead — queue position, tile counts, stage names — with shape skeletons holding the result stages. No synthetic progress anywhere.

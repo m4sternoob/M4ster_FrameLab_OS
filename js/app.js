@@ -129,8 +129,34 @@ function clearStage() {
   const st = $("#stage");
   st.width = 2; st.height = 2;
   st.getContext("2d").clearRect(0, 0, 2, 2);
-  stageMsg("");
+    stageMsg("");
 }
+
+/* Global error safety net: unhandled errors and promise rejections
+ * outside a step's own try/catch used to leave the wizard stuck on a
+ * spinner with no message. Route them through the existing stage
+ * error UI so every failure ends with an explanation and a retry. */
+let lastUnhandledMsg = "", lastUnhandledAt = 0;
+function reportUnhandledFailure(msg) {
+  const now = Date.now();
+  if (msg === lastUnhandledMsg && now - lastUnhandledAt < 2000) return;
+  lastUnhandledMsg = msg; lastUnhandledAt = now;
+  if (typeof state !== "undefined") setBusy(false);
+  const active = document.querySelector("#stepper li.active");
+  if (active) { active.classList.remove("active"); active.classList.add("error"); }
+  clearStage();
+  stageMsg("FAILED: " + msg, true);
+  showRetry("Extraction found nothing usable. Retry with a stricter prompt, lower the frame count, or pick a different background key.");
+  setStatusBar("error"); // after showRetry: it sets the bar to warn
+}
+window.addEventListener("error", (e) => {
+  if (!e.message) return; // resource-load failures carry no message
+  reportUnhandledFailure(e.message);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  const r = e.reason;
+  reportUnhandledFailure(r && r.message ? String(r.message) : String(r));
+});
 
 /* ---------------- per-category params UI ---------------- */
 
