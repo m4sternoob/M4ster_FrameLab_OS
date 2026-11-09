@@ -5361,10 +5361,13 @@ function dlHitPoint(x, y) {
   const D = dlState();
   if (!D.src) return -1;
   const tol = Math.max(12, Math.min(D.src.w, D.src.h) / 26);
-  let best = -1, bestD = tol;
+  /* Compare squared distances — same nearest point, same tolerance,
+   * without a square root per point. */
+  let best = -1, bestD2 = tol * tol;
   D.points.forEach((p, i) => {
-    const d = Math.hypot(p.qx - x, p.qy - y);
-    if (d < bestD) { bestD = d; best = i; }
+    const ddx = p.qx - x, ddy = p.qy - y;
+    const d2 = ddx * ddx + ddy * ddy;
+    if (d2 < bestD2) { bestD2 = d2; best = i; }
   });
   return best;
 }
@@ -12149,19 +12152,6 @@ function wire3DLab() {
   render();
 })();
 
-/* ============ test build: Fresh from the Lab — pop in as it scrolls into view ============ */
-(function () {
-  var el = document.getElementById("freshLab");
-  if (!el) return;
-  if (!("IntersectionObserver" in window)) { el.classList.add("in"); return; }
-  var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (en) {
-      if (en.isIntersecting) { el.classList.add("in"); io.disconnect(); }
-    });
-  }, { threshold: 0.12 });
-  io.observe(el);
-})();
-
 /* ===== P5: Animate panel wiring ===== */
 document.addEventListener("DOMContentLoaded", function () {
   const sec = document.getElementById("labAnimate");
@@ -13025,7 +13015,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var kF=br0.width/((b.offsetWidth||br0.width)*(cur.s||1));if(!isFinite(kF)||kF<=0)kF=1;
     function mv(ev){
       if(!active){
-        if(Math.hypot(ev.clientX-sx,ev.clientY-sy)<6)return;
+        if((ev.clientX-sx)*(ev.clientX-sx)+(ev.clientY-sy)*(ev.clientY-sy)<36)return; /* squared: same 6px dead zone */
         active=true;drag={el:b};
         b.classList.add('mml-dragging');
       }
@@ -13075,7 +13065,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var cur=posOf(b),startS=cur.s;
     function mv(ev){
       if(!active){
-        if(Math.hypot(ev.clientX-sx,ev.clientY-sy)<6)return;
+        if((ev.clientX-sx)*(ev.clientX-sx)+(ev.clientY-sy)*(ev.clientY-sy)<36)return; /* squared: same 6px dead zone */
         active=true;
       }
       var d=Math.max(20,Math.hypot(ev.clientX-cx,ev.clientY-cy));

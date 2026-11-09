@@ -904,7 +904,7 @@ section.page-section { scroll-margin-top: 78px; }
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
   mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
 }
-.marquee-track { display: inline-flex; gap: 26px; align-items: baseline; animation: marquee 28s linear infinite; }
+.marquee-track { display: inline-flex; gap: 26px; align-items: baseline; animation: marquee 28s linear infinite; will-change: transform; }
 .marquee-track span {
   font-family: var(--mono); font-size: 13px; letter-spacing: .5px;
   color: var(--dim); white-space: nowrap;
@@ -1039,7 +1039,9 @@ body.no-rgb .marquee::before, body.no-rgb .marquee::after { display: none; }
   animation: logoGlow 4.2s ease-in-out infinite;
 }
 .monogram { display: block; animation: logoFloat 5.2s ease-in-out infinite; }
-@keyframes logoGlow { 0%, 100% { opacity: .16; } 50% { opacity: .44; } }
+/* v8.17: a duplicate @keyframes logoGlow lived here (.16/.44) — the
+ * later definition below (.22/.58) always won the cascade, so this
+ * copy was dead code. Removed; the rendered glow is unchanged. */
 @keyframes logoFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 
 /* ---------- focus-visible polish (Lisbon a11y spirit) ---------- */
@@ -2467,13 +2469,16 @@ body.dim-3d .fresh-lab { display: none; }
 .m3-viewpreset { display: flex; align-items: center; gap: 6px; color: #dfe2e9; font-size: 13px; }
 .m3-viewpreset select { background: #101116; color: #eceef2; border: 1px solid #2c2e35; border-radius: 8px; padding: 6px 8px; font: 600 13px/1 inherit; cursor: pointer; }
 .m3-modes { display: flex; background: #101116; border: 1px solid #26272e; border-radius: 10px; padding: 3px; gap: 3px; }
-.m3-mode { border: 0; background: transparent; color: #9ba0ab; font: 600 12.5px/1 inherit; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+.m3-mode { border: 0; background: transparent; color: #9ba0ab; font: 600 12.5px/1 inherit; padding: 7px 12px; border-radius: 8px; cursor: pointer; transition: background-color .18s ease, color .18s ease, transform .12s ease; }
+.m3-mode:active { transform: scale(.96); }
 .m3-mode.active { background: var(--violet); color: var(--on-accent); box-shadow: 0 3px 8px rgba(0,0,0,.4); }
 .m3-modetab:hover, .m3-seg-btn:hover:not(.active), .m3-mode:hover:not(.active), .m3-switch:hover { border-color: color-mix(in srgb, var(--violet) 60%, transparent); color: #eef1d6; }
 .m3-tb-btn {
   border: 1px solid #2c2e35; background: #17181d; color: #d7dae1; cursor: pointer;
   font: 600 12.5px/1 inherit; padding: 9px 12px; border-radius: 10px;
+  transition: background-color .18s ease, color .18s ease, border-color .18s ease, transform .12s ease;
 }
+.m3-tb-btn:active { transform: scale(.96); }
 .m3-tb-btn:hover { border-color: var(--violet); }
 .m3-stats {
   position: absolute; top: 64px; left: 14px; z-index: 5; min-width: 190px;

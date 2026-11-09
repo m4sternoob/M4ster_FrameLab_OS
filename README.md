@@ -27,6 +27,12 @@ sheet PNG plus an atlas manifest JSON your game can read directly.
 
 ![Text to 3D — words straight to a mesh](assets/framelab-3d-mesh.gif)
 
+## v8.17 — Polish pass: smoother 3D toolbar, leaner motion, dead code out
+
+- **Motion:** the 3D studio's toolbar and mode buttons now ease their hover and active states and take the same press feedback as the rest of the app (they snapped before); the marquee track gets a compositor hint for its constant slide.
+- **Performance, visuals unchanged:** a duplicate `logoGlow` keyframes definition — dead code, the later definition always won the cascade — is removed; the pointer dead-zone checks in the layout editor and DragLab's nearest-point pick now compare squared distances instead of square roots, with identical thresholds and identical results. The canvas gradient audit came back clean: every gradient in the app is a one-shot render, none is created per frame.
+- **Bug hygiene:** a leftover scroll-reveal block for a "Fresh from the Lab" section that no longer exists has been removed — it queried a missing element on every page load and no-oped.
+
 ## Latest — a global error safety net
 
 The current release stays v8.16; this change rides on top of it (PR #2).
