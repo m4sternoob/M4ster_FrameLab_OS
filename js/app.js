@@ -9676,9 +9676,10 @@ let showcaseRAF = 0;
 const reduceMotion = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
 /* master Animations switch (Customize): the head script puts .anim-off on
- * <html> unless localStorage "m4ster.animations" === "1", so animations
- * are OFF by default and this returns false. Decorative loops (cursor
- * trail, showcase, aura parallax) check it; content playback never does. */
+ * <html> only when localStorage "m4ster.animations" === "0", so animations
+ * are ON by default (fleet rule, 2026-11-10) and a saved OFF still wins.
+ * Decorative loops (cursor trail, showcase, aura parallax) check it;
+ * content playback never does. */
 function animationsOn() {
   return !document.documentElement.classList.contains("anim-off");
 }

@@ -27,6 +27,11 @@ sheet PNG plus an atlas manifest JSON your game can read directly.
 
 ![Text to 3D — words straight to a mesh](assets/framelab-3d-mesh.gif)
 
+## v8.18 — Animations on by default
+
+- **The master Animations default flips to ON.** A first-time visitor now gets the full alive site — entrance pops, the drifting aura, the marquee, the breathing logo — instead of a static page with the life switched off. The pre-paint script only adds the off state when a preference has actually been saved.
+- **What does not change:** a saved OFF choice in Customize still wins on every later visit, and a system-level `prefers-reduced-motion` setting still settles every animation and transition, exactly as before.
+
 ## v8.17 — Polish pass: smoother 3D toolbar, leaner motion, dead code out
 
 - **Motion:** the 3D studio's toolbar and mode buttons now ease their hover and active states and take the same press feedback as the rest of the app (they snapped before); the marquee track gets a compositor hint for its constant slide.
